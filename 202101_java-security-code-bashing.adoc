@@ -1,4 +1,4 @@
-= Security code bashing
+= Java Security code bashing
 Thomas SCHWENDER <https://github.com/ardemius[@ardemius]>
 // Handling GitHub admonition blocks icons
 ifndef::env-github[:icons: font]
