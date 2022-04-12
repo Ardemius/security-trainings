@@ -31,7 +31,7 @@ toc::[]
 
 Those courses come from the *Security Codebashing* of *Checkmarx*. +
 (*Codebashing* is a hands-on, interactive solution that fits into developers' daily routines). +
-It covers the *2021 Top 10 OWASP security risks* for software development.
+It covers the *2021 Top 10 OWASP security risks* for the development of web applications.
 
 A free, incomplete, version is available at https://free.codebashing.com/.
 
