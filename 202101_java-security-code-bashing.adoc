@@ -63,10 +63,10 @@ if (result.next()) {
 }
 ----
 
-* The string variable sql is then declared, which represents the SQL query used to authenticate Kevin's credentials. +
-Note, that Kevin's email and password values are concatenated to build the final query.
+* The string variable sql is then declared, which represents the SQL query used to authenticate Alice's credentials. +
+Note, that Alice's email and password values are concatenated to build the final query.
 * The SQL query defined in sql string variable is then executed by invoking the executeQuery method. This method executes our query against the backend SQL server and returns a ResultSet object which is checked on line 10 through the if/else block. +
-Finally, should Kevin's credentials match, the loggedIn variable is set to true and she is redirected to her profile page.
+Finally, should Alice's credentials match, the loggedIn variable is set to true and she is redirected to her profile page.
 
 With the previous code, if we try as password the string `' or 1=1)#'`, here is what the SQL statement will look like:
 
@@ -76,7 +76,7 @@ With the previous code, if we try as password the string `' or 1=1)#'`, here is 
 String sql = "select * from users where (email ='" + email +"' and password ='" + password + "')";
 ​
 // Below is the raw query sent to the DB:
-"SELECT * FROM users WHERE (email = 'kevin@noob.com' AND password = '' or 1=1)#')"
+"SELECT * FROM users WHERE (email = 'Alice@noob.com' AND password = '' or 1=1)#')"
 ----
 
 * Because this statement is both syntactically valid and `OR 1=1` always returns true, *the authentication mechanism is bypassed*.
@@ -242,7 +242,7 @@ public class CommandExecuter {
         try {
             String myUid = userName;
             Runtime rt = Runtime.getRuntime();
-            rt.exec("/usr/bin/statlab " + ”-“ + myUid); // Call statlab with Kevin's username
+            rt.exec("/usr/bin/statlab " + ”-“ + myUid); // Call statlab with Alice's username
 ​
             // process results for userID and return output in HTML.
             // ...
@@ -256,17 +256,17 @@ public class CommandExecuter {
 ----
 
 * The executeCommand method calls the `java.lang.Runtime.exec()` function which invokes the /usr/bin/statlab application. The `exec()` method further accepts myUID as a parameter, whose value is passed to statlab program as an argument. +
-For Kevin's profile the resulting string executed by `exec()` would be: `/usr/bin/statlab -kevin`
+For Alice's profile the resulting string executed by `exec()` would be: `/usr/bin/statlab -Alice`
 
 To understand how command injection attacks work, let us analyze the URL passed to our server-side code.
 
-    https://tradeadmin.codebashing.com/console/execute?username=Kevin
+    https://tradeadmin.codebashing.com/console/execute?username=Alice
 
-When Kevin generates a Risk Analysis report, the TradeADMIN server parses the above URL, specifically the query string `username=Kevin` which is then passed to the function to generate analytical reports for Kevin's trading account.
+When Alice generates a Risk Analysis report, the TradeADMIN server parses the above URL, specifically the query string `username=Alice` which is then passed to the function to generate analytical reports for Alice's trading account.
 
 If, in the previous URL, we append the ";id" string:
 
-    https://tradeadmin.codebashing.com/console/execute?username=Kevin;id
+    https://tradeadmin.codebashing.com/console/execute?username=Alice;id
 
 In addition to the classic result (the analytical report), an Unexpected Output Error is also displayed:
 
@@ -277,9 +277,9 @@ ERROR: Unexpected output encountered: uid=0(root) gid=0(root) groups=0(root),1(b
 This error comes from the previous "id" string that was added at the end of the URL, and which *has been executed as the UNIX `id` command*, that returns the user id for the user that ran the command.
 
 * In the previous code, the executeCommand method initializes a runtime environment by invoking Runtime.getRuntime() method that allows the TradeADMIN application to interface with it's runtime environment.
-* Finally executeCommand invokes the statlab program via `exec()`, passing Kevin's modified query string `Kevin;id` as an argument through myUid string variable. The final command executed on TradeADMIN server would be: `statlab -Kevin;id`
+* Finally executeCommand invokes the statlab program via `exec()`, passing Alice's modified query string `Alice;id` as an argument through myUid string variable. The final command executed on TradeADMIN server would be: `statlab -Alice;id`
 {lb}
-However note that `myUid` value is not validated in any way before being passed to the `exec()` method. Given that the ";" character is interpreted as a command separator in UNIX like operating systems, *Kevin's query string is interpreted by `exec()` method as two separate commands* i.e statlab -Kevin and id
+However note that `myUid` value is not validated in any way before being passed to the `exec()` method. Given that the ";" character is interpreted as a command separator in UNIX like operating systems, *Alice's query string is interpreted by `exec()` method as two separate commands* i.e statlab -Alice and id
 
 .Remediation
 [source,java]
@@ -297,7 +297,7 @@ public class CommandExecuter {
                 return false;
         }
             Runtime rt = Runtime.getRuntime();
-            rt.exec("/usr/bin/statlab " + ”-“ + myUid); // Call statlab with Kevin's username
+            rt.exec("/usr/bin/statlab " + ”-“ + myUid); // Call statlab with Alice's username
 ​
             // process results for userID and return output in HTML.
             // ...
@@ -318,7 +318,7 @@ Should any non alphanumeric characters be encountered, the `if` check will fail 
 ======
 Note: Although the proposed fix is sufficient to remediate our vulnerable example, the overall logic and security design for executeCommand() method can be significantly improved by not accepting user supplied myUiD value through the username parameter.
 
-A better approach would be to extract Kevin's username from a database record or a static index variable that is set during Kevin's account creation process, which can then be passed as an argument to the statlab program for execution.
+A better approach would be to extract Alice's username from a database record or a static index variable that is set during Alice's account creation process, which can then be passed as an argument to the statlab program for execution.
 ======
 
 Some examples of OS Command Injection attacks can be found on Checkmarx resources https://www.checkmarx.com/knowledge/knowledgebase/os-command-injection
@@ -333,8 +333,8 @@ As an example, when trying to login to a Web application, the URL returned by th
 
     https://tradesupport.codebashing.com/trade_support/log-in?app_session_id=tWwO8aTiYZXJy2ZW2zNsVOVVQD6POgrW
 
-The web application has assigned Kevin a unique *session identifier* (also known as a *session token*). +
-In our example, Kevin's session identifier is set to: `tWwO8aTiYZXJy2ZW2zNsVOVVQD6POgrW`
+The web application has assigned Alice a unique *session identifier* (also known as a *session token*). +
+In our example, Alice's session identifier is set to: `tWwO8aTiYZXJy2ZW2zNsVOVVQD6POgrW`
 
 An attacker will also get an session token when clicking on the Web application "login" button :
 
@@ -342,8 +342,8 @@ An attacker will also get an session token when clicking on the Web application 
 
 The attacker then send this URL to a user, asking him to login with it (for some false reasons)
 
-Kevin has logged in successfully, and the attacker, that was keeping regularly refreshing the login page, has successfully bypassed the authentication and accessed kevin's web session without trying to guess or brute force her credentials. +
-Because of this *Session Fixation* attack, the attacker has managed to *hijack* Kevin's session!
+Alice has logged in successfully, and the attacker, that was keeping regularly refreshing the login page, has successfully bypassed the authentication and accessed Alice's web session without trying to guess or brute force her credentials. +
+Because of this *Session Fixation* attack, the attacker has managed to *hijack* Alice's session!
 
 .Vulnerable code
 [source,java]
@@ -363,11 +363,11 @@ private Boolean authenticate(HttpServletRequest request, String credential, Stri
 }
 ----
 
-The authenticate() function calls login() which verifies Kevin's credentials. However his existing session is not invalidated before invoking the login() method.
+The authenticate() function calls login() which verifies Alice's credentials. However his existing session is not invalidated before invoking the login() method.
 
 This means his pre-login session identifier would remain unchanged post login.
 
-Given that the attacker knows Kevin's pre-authentication session value, he can successfully impersonate his authenticated session once Kevin has logged onto the TradeSUPPORT application.
+Given that the attacker knows Alice's pre-authentication session value, he can successfully impersonate his authenticated session once Alice has logged onto the TradeSUPPORT application.
 
 A combination of the following best practices could help to defend against Session Fixation attacks:
 
@@ -398,9 +398,9 @@ private Boolean authenticate(HttpServletRequest request, String credential, Stri
 }
 ----
 
-Here a new session identifier is generated for Kevin by invoking request.getSession(true) method, ensuring his *session identifier gets recycled prior to authentication*.
+Here a new session identifier is generated for Alice by invoking request.getSession(true) method, ensuring his *session identifier gets recycled prior to authentication*.
 
-Should the attacker now attempt a session fixation attack against Kevin, it would fail because the session identifier has changed from it's original value that was known previously to the attacker, thus preventing the hijacking of Kevin's session.
+Should the attacker now attempt a session fixation attack against Alice, it would fail because the session identifier has changed from it's original value that was known previously to the attacker, thus preventing the hijacking of Alice's session.
 
 .Reminder
 NOTE: Session fixation happens when the application uses the same session token before and after the user authenticates. After authentication, the application just upgrades the token to give access to the functionality that requires authentication.
@@ -1035,7 +1035,7 @@ Furthermore, if the application was (insecurely) sending the login GET request v
 .Live log examples
 [source]
 ----
-GET 200 https://tradebond.codebashing.com/site_log_in?email=kevin&password=dark
+GET 200 https://tradebond.codebashing.com/site_log_in?email=Alice&password=dark
 
 GET 200 https://tradebond.codebashing.com/site_log_in?email=admin&password=admin
 ----
